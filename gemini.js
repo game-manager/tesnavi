@@ -49,7 +49,7 @@ function getScanModel() {
     model: MODEL_NAME,
     generationConfig: {
       temperature: 0.1,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
       responseMimeType: "application/json"
     }
   });
@@ -72,7 +72,24 @@ async function scanAssignmentsFromImage(file) {
     { inlineData }
   ]);
 
-  return normalizeAssignments(parseJSONList(getResponseText(result)));
+  const firstPass = normalizeAssignments(await parseAssignmentsJSON(getResponseText(result)));
+
+  if (!shouldRetryAssignmentScan(firstPass)) {
+    return firstPass;
+  }
+
+  try {
+    console.warn("課題読み取りの件数が少ないため、表専用プロンプトで再読み取りします。");
+    const retryResult = await getScanModel().generateContent([
+      createAssignmentScanRetryPrompt(firstPass),
+      { inlineData }
+    ]);
+    const retryPass = normalizeAssignments(await parseAssignmentsJSON(getResponseText(retryResult)));
+    return retryPass.length >= firstPass.length ? mergeAssignments(retryPass, firstPass) : firstPass;
+  } catch (error) {
+    console.warn("課題読み取りの再試行に失敗しました。初回結果を使います。", error);
+    return firstPass;
+  }
 }
 
 function createAssignmentScanPrompt() {
@@ -97,15 +114,43 @@ function createAssignmentScanPrompt() {
     "- ページ・問題数が読めない作品名や単元名だけの場合は unit は 個、amount は主要項目数にする。",
     "",
     "出力はJSON配列だけ。Markdownや説明文は禁止。",
-    "各要素のキーは subjectName, range, amount, unit, weakness, sourceText。",
+    "各要素のキーは subjectName, range, amount, unit, weakness。",
     "weakness は必ず 普通。",
-    "sourceText には、その候補を作った元の短い抜粋を入れる。",
+    "JSON文字列の中に改行を入れない。range は1行の短い文字列にする。",
+    "最大25件まで。細かすぎる範囲は教材ごとにまとめる。",
     "",
     "出力例:",
     "[",
-    "  {\"subjectName\":\"社会\",\"range\":\"地理: 教科書p48-p125\",\"amount\":78,\"unit\":\"ページ\",\"weakness\":\"普通\",\"sourceText\":\"教科書p48-p125\"},",
-    "  {\"subjectName\":\"数学\",\"range\":\"体系問題集 幾何編 174番〜256番\",\"amount\":83,\"unit\":\"問\",\"weakness\":\"普通\",\"sourceText\":\"174番〜256番\"}",
+    "  {\"subjectName\":\"社会\",\"range\":\"地理: 教科書p48-p125\",\"amount\":78,\"unit\":\"ページ\",\"weakness\":\"普通\"},",
+    "  {\"subjectName\":\"数学\",\"range\":\"体系問題集 幾何編 174番〜256番\",\"amount\":83,\"unit\":\"問\",\"weakness\":\"普通\"}",
     "]"
+  ].join("\n");
+}
+
+function createAssignmentScanRetryPrompt(previousItems) {
+  return [
+    "前回の読み取りでは教科やページ数が抜けた可能性があります。",
+    "同じ画像を、学校のテスト範囲表としてもう一度読み取ってください。",
+    "",
+    "必ず確認する教科ラベル:",
+    "国語, 社会, 数学, 理科, 音楽, 美術, 保健体育, 家庭, 英語",
+    "",
+    "表の読み方:",
+    "- 左端の細い列が教科名です。縦書きや結合セルでも必ず拾う。",
+    "- 中央の「考査範囲」だけを課題候補にする。",
+    "- 右側の「ポイント」は学習アドバイスなので、課題量の計算には使わない。",
+    "- 1教科に複数教材がある場合は、教材ごとに分けてよい。",
+    "- p48-p125, P72〜P111, pp.117-156 のようなページ範囲を見つけたら、range にそのまま残す。",
+    "- 174番〜256番 のような問題番号範囲を見つけたら、range にそのまま残す。",
+    "- ページ数や問題数は両端を含めて数える。",
+    "- 読めない部分は推測で作らない。ただし、教科名は左端の表記から補う。",
+    "",
+    "前回候補:",
+    JSON.stringify(previousItems),
+    "",
+    "出力はJSON配列のみ。各要素のキーは subjectName, range, amount, unit, weakness。",
+    "unit は ページ, 個, 問, 章 のどれか。weakness は 普通。",
+    "JSON文字列の中に改行を入れない。最大25件。"
   ].join("\n");
 }
 
@@ -148,14 +193,44 @@ function fileToInlineData(file) {
   });
 }
 
-function parseJSONList(text) {
+async function parseAssignmentsJSON(text) {
   const cleaned = text
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/```$/i, "")
     .trim();
   const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
-  return JSON.parse(arrayMatch ? arrayMatch[0] : cleaned);
+  const candidate = arrayMatch ? arrayMatch[0] : cleaned;
+
+  try {
+    return JSON.parse(candidate);
+  } catch (error) {
+    console.warn("GeminiのJSONが壊れていたため、修復を試します。", error);
+    return repairAssignmentsJSON(candidate);
+  }
+}
+
+async function repairAssignmentsJSON(brokenText) {
+  const prompt = [
+    "次のテキストは、学校のテスト範囲を抽出しようとして壊れたJSONです。",
+    "内容を保ちながら、妥当なJSON配列だけに修復してください。",
+    "説明文、Markdown、コードブロックは禁止。",
+    "各要素のキーは subjectName, range, amount, unit, weakness。",
+    "unit は ページ, 個, 問, 章 のどれか。",
+    "weakness は 普通。",
+    "range の文字列に改行を入れない。",
+    "",
+    brokenText
+  ].join("\n");
+
+  const result = await getScanModel().generateContent(prompt);
+  const repaired = getResponseText(result)
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const arrayMatch = repaired.match(/\[[\s\S]*\]/);
+  return JSON.parse(arrayMatch ? arrayMatch[0] : repaired);
 }
 
 function normalizeAssignments(value) {
@@ -168,7 +243,9 @@ function normalizeAssignments(value) {
   const allowedWeakness = ["得意", "普通", "苦手"];
 
   return list.map((item) => {
-    const range = String(item.range || item.sourceText || "画像から読み取った課題").trim();
+    const range = String(item.range || item.sourceText || "画像から読み取った課題")
+      .replace(/\s*\n+\s*/g, " / ")
+      .trim();
     const sourceText = String(item.sourceText || "").trim();
     const inferred = inferAmountAndUnit(`${range} ${sourceText}`);
     const unit = inferred.unit || (allowedUnits.includes(item.unit) ? item.unit : "ページ");
@@ -183,6 +260,29 @@ function normalizeAssignments(value) {
       weakness
     };
   }).filter((item) => item.subjectName && item.range);
+}
+
+function shouldRetryAssignmentScan(assignments) {
+  if (!Array.isArray(assignments) || assignments.length < 4) return true;
+
+  const subjects = new Set(assignments.map((item) => item.subjectName));
+  const coreSubjects = ["国語", "社会", "数学", "理科", "英語"];
+  const foundCoreCount = coreSubjects.filter((subject) => subjects.has(subject)).length;
+  return foundCoreCount < 3;
+}
+
+function mergeAssignments(primary, secondary) {
+  const merged = [];
+  const seen = new Set();
+
+  [...primary, ...secondary].forEach((item) => {
+    const key = `${item.subjectName}|${normalizeRangeText(item.range).toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(item);
+  });
+
+  return merged;
 }
 
 function normalizeSubjectName(value) {
@@ -209,7 +309,7 @@ function inferAmountAndUnit(text) {
     return { amount: pageTotal, unit: "ページ" };
   }
 
-  const problemTotal = sumRanges(normalized, /(\d+)\s*(?:番|問)\s*(?:-|~|〜|ー|－|～)\s*(\d+)\s*(?:番|問)/g);
+  const problemTotal = sumRanges(normalized, /(\d+)\s*(?:番|問)\s*(?:-|~|〜|ー|－|～)\s*(\d+)\s*(?:番|問)?/g);
   if (problemTotal > 0) {
     return { amount: problemTotal, unit: "問" };
   }
