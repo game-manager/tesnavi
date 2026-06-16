@@ -185,8 +185,8 @@ async function initFirebaseSync() {
 
     const appCheckReady = await initFirebaseAppCheck();
     if (!appCheckReady) {
-      updateFirebaseStatus("App Check確認失敗", "offline");
-      return;
+      console.warn("App Checkに失敗しました。App Check適用中のFirebaseサービスでは接続が拒否される可能性があります。");
+      updateFirebaseStatus("App Check未確認", "syncing");
     }
 
     const database = window.firebase.database(app);
