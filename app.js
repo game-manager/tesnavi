@@ -172,7 +172,7 @@ function saveState() {
   }
 }
 
-function initFirebaseSync() {
+async function initFirebaseSync() {
   if (!window.firebase || !window.firebase.database) {
     updateFirebaseStatus("Firebase SDK未読み込み", "offline");
     return;
@@ -183,7 +183,11 @@ function initFirebaseSync() {
       ? window.firebase.app()
       : window.firebase.initializeApp(firebaseConfig);
 
-    initFirebaseAppCheck();
+    const appCheckReady = await initFirebaseAppCheck();
+    if (!appCheckReady) {
+      updateFirebaseStatus("App Check確認失敗", "offline");
+      return;
+    }
 
     const database = window.firebase.database(app);
     const deviceId = getDeviceId();
@@ -216,29 +220,53 @@ function initFirebaseSync() {
       updateFirebaseStatus("Firebase同期済み", "online");
     }, (error) => {
       console.warn("Firebaseの読み込みに失敗しました。", error);
-      updateFirebaseStatus("Firebase同期エラー", "offline");
+      updateFirebaseStatus(getFirebaseErrorLabel(error, "Firebase同期エラー"), "offline");
     });
   } catch (error) {
     console.warn("Firebase初期化に失敗しました。", error);
-    updateFirebaseStatus("Firebase接続失敗", "offline");
+    updateFirebaseStatus(getFirebaseErrorLabel(error, "Firebase接続失敗"), "offline");
   }
 }
 
-function initFirebaseAppCheck() {
-  if (firebaseSync.appCheckReady) return;
+async function initFirebaseAppCheck() {
+  if (firebaseSync.appCheckReady) return true;
 
   if (!window.firebase.appCheck) {
     console.warn("Firebase App Check SDKが読み込まれていません。");
-    return;
+    return false;
   }
 
   try {
     // App Checkの適用後もRealtime DatabaseやAI Logicへアクセスできるようにする。
-    window.firebase.appCheck().activate(RECAPTCHA_SITE_KEY, true);
+    const appCheck = window.firebase.appCheck();
+    appCheck.activate(RECAPTCHA_SITE_KEY, true);
+    updateFirebaseStatus("App Check確認中", "syncing");
+
+    if (typeof appCheck.getToken === "function") {
+      await appCheck.getToken(false);
+    }
+
     firebaseSync.appCheckReady = true;
+    return true;
   } catch (error) {
     console.warn("Firebase App Checkの初期化に失敗しました。", error);
+    return false;
   }
+}
+
+function getFirebaseErrorLabel(error, fallback) {
+  const code = String(error && error.code ? error.code : "");
+  const message = String(error && error.message ? error.message : "");
+
+  if (code.includes("permission-denied") || message.includes("Permission denied")) {
+    return "Firebase権限エラー";
+  }
+
+  if (code.includes("app-check") || message.toLowerCase().includes("app check")) {
+    return "App Checkエラー";
+  }
+
+  return fallback;
 }
 
 function queueFirebaseSave(snapshot) {
