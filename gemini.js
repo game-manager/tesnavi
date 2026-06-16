@@ -16,6 +16,7 @@ const MODEL_NAME = "gemini-3.5-flash";
 const AI_APP_NAME = "tesnavi-ai";
 
 let model;
+let scanModel;
 
 function getModel() {
   if (model) return model;
@@ -36,6 +37,26 @@ function getModel() {
   return model;
 }
 
+function getScanModel() {
+  if (scanModel) return scanModel;
+
+  const app = getApps().some((item) => item.name === AI_APP_NAME)
+    ? getApp(AI_APP_NAME)
+    : initializeApp(firebaseConfig, AI_APP_NAME);
+  const ai = getAI(app, { backend: new GoogleAIBackend() });
+
+  scanModel = getGenerativeModel(ai, {
+    model: MODEL_NAME,
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+      responseMimeType: "application/json"
+    }
+  });
+
+  return scanModel;
+}
+
 async function generateStudyReply(message, context) {
   const prompt = createStudyPrompt(message, context);
   const result = await getModel().generateContent(prompt);
@@ -44,23 +65,48 @@ async function generateStudyReply(message, context) {
 
 async function scanAssignmentsFromImage(file) {
   const inlineData = await fileToInlineData(file);
-  const prompt = [
-    "この画像は中学生〜高校生向けのテスト課題表や提出物メモです。",
-    "読み取れる範囲で、教科ごとの課題候補をJSON配列だけで返してください。",
-    "説明文やMarkdownは不要です。",
-    "各要素は subjectName, range, amount, unit, weakness を必ず含めてください。",
-    "unit は ページ, 個, 問, 章 のどれかにしてください。",
-    "weakness は 普通 にしてください。",
-    "amount が読めない場合は、無理に大きくせず 1〜10 程度の実用的な数にしてください。",
-    "例: [{\"subjectName\":\"数学\",\"range\":\"ワークP10〜P45\",\"amount\":36,\"unit\":\"ページ\",\"weakness\":\"普通\"}]"
-  ].join("\n");
+  const prompt = createAssignmentScanPrompt();
 
-  const result = await getModel().generateContent([
+  const result = await getScanModel().generateContent([
     prompt,
     { inlineData }
   ]);
 
   return normalizeAssignments(parseJSONList(getResponseText(result)));
+}
+
+function createAssignmentScanPrompt() {
+  return [
+    "あなたは日本の中学校・高校のテスト範囲表を読むOCR補助です。",
+    "画像は表形式で、左端の細い列に教科名、中央の列に「考査範囲」、右の列に「ポイント」があります。",
+    "課題候補は中央の「考査範囲」列から抽出してください。右の「ポイント」列は原則として範囲に混ぜないでください。",
+    "",
+    "最重要ルール:",
+    "1. 左端の教科名を必ず読む。教科名は 国語, 社会, 数学, 理科, 音楽, 美術, 保健体育, 家庭, 英語 のような学校教科名に正規化する。",
+    "2. 同じ教科の中に複数の教材・ページ・問題番号がある場合は、1件にまとめず、教材や範囲ごとに複数件へ分けてよい。",
+    "3. 教科名が縦書き・結合セル・行またぎでも、直前または同じ枠の左端教科名を引き継ぐ。",
+    "4. ページ範囲は p48-p125, P72〜P111, pp.117-156 などをそのまま range に残す。",
+    "5. 問題番号は 174番〜256番 のようにそのまま range に残す。",
+    "6. 画像に存在しない教科や教材を作らない。読めない文字は推測しすぎない。",
+    "",
+    "amount と unit の決め方:",
+    "- ページ範囲が主なら unit は ページ。amount は両端を含めて数える。例: P10〜P45 は 36ページ。",
+    "- 複数ページ範囲があるなら足し合わせる。例: P10〜16・P66〜83・P86〜91 は 31ページ。",
+    "- 問題番号範囲が主なら unit は 問。amount は両端を含めて数える。例: 174番〜256番 は 83問。",
+    "- 章だけが読める場合は unit は 章。",
+    "- ページ・問題数が読めない作品名や単元名だけの場合は unit は 個、amount は主要項目数にする。",
+    "",
+    "出力はJSON配列だけ。Markdownや説明文は禁止。",
+    "各要素のキーは subjectName, range, amount, unit, weakness, sourceText。",
+    "weakness は必ず 普通。",
+    "sourceText には、その候補を作った元の短い抜粋を入れる。",
+    "",
+    "出力例:",
+    "[",
+    "  {\"subjectName\":\"社会\",\"range\":\"地理: 教科書p48-p125\",\"amount\":78,\"unit\":\"ページ\",\"weakness\":\"普通\",\"sourceText\":\"教科書p48-p125\"},",
+    "  {\"subjectName\":\"数学\",\"range\":\"体系問題集 幾何編 174番〜256番\",\"amount\":83,\"unit\":\"問\",\"weakness\":\"普通\",\"sourceText\":\"174番〜256番\"}",
+    "]"
+  ].join("\n");
 }
 
 function createStudyPrompt(message, context) {
@@ -113,23 +159,93 @@ function parseJSONList(text) {
 }
 
 function normalizeAssignments(value) {
-  const list = Array.isArray(value) ? value : [];
+  const list = Array.isArray(value)
+    ? value
+    : Array.isArray(value && value.assignments)
+      ? value.assignments
+      : [];
   const allowedUnits = ["ページ", "個", "問", "章"];
   const allowedWeakness = ["得意", "普通", "苦手"];
 
   return list.map((item) => {
-    const amount = Number(item.amount);
-    const unit = allowedUnits.includes(item.unit) ? item.unit : "ページ";
+    const range = String(item.range || item.sourceText || "画像から読み取った課題").trim();
+    const sourceText = String(item.sourceText || "").trim();
+    const inferred = inferAmountAndUnit(`${range} ${sourceText}`);
+    const unit = inferred.unit || (allowedUnits.includes(item.unit) ? item.unit : "ページ");
+    const amount = inferred.amount || Number(item.amount);
     const weakness = allowedWeakness.includes(item.weakness) ? item.weakness : "普通";
 
     return {
-      subjectName: String(item.subjectName || "課題").trim(),
-      range: String(item.range || "画像から読み取った課題").trim(),
+      subjectName: normalizeSubjectName(item.subjectName),
+      range,
       amount: Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 1,
       unit,
       weakness
     };
   }).filter((item) => item.subjectName && item.range);
+}
+
+function normalizeSubjectName(value) {
+  const text = String(value || "").replace(/\s+/g, "").replace(/[＊*]/g, "").trim();
+  const subjectMap = [
+    [/国語/, "国語"],
+    [/社会|地理|歴史|公民/, "社会"],
+    [/数学|算数/, "数学"],
+    [/理科|化学|物理|生物|地学/, "理科"],
+    [/音楽/, "音楽"],
+    [/美術/, "美術"],
+    [/保健体育|保体|体育|保健/, "保健体育"],
+    [/家庭|技術家庭|技家/, "家庭"],
+    [/英語|English/i, "英語"]
+  ];
+  const matched = subjectMap.find(([pattern]) => pattern.test(text));
+  return matched ? matched[1] : text || "課題";
+}
+
+function inferAmountAndUnit(text) {
+  const normalized = normalizeRangeText(text);
+  const pageTotal = sumRanges(normalized, /(?:p|pp|page|ページ)\.?\s*(\d+)\s*(?:-|~|〜|ー|－|～)\s*(?:p|pp|page|ページ)?\.?\s*(\d+)/gi);
+  if (pageTotal > 0) {
+    return { amount: pageTotal, unit: "ページ" };
+  }
+
+  const problemTotal = sumRanges(normalized, /(\d+)\s*(?:番|問)\s*(?:-|~|〜|ー|－|～)\s*(\d+)\s*(?:番|問)/g);
+  if (problemTotal > 0) {
+    return { amount: problemTotal, unit: "問" };
+  }
+
+  const chapterTotal = countChapterMentions(normalized);
+  if (chapterTotal > 0) {
+    return { amount: chapterTotal, unit: "章" };
+  }
+
+  return { amount: 0, unit: "" };
+}
+
+function normalizeRangeText(text) {
+  return String(text || "")
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/[Ｐｐ]/g, "p")
+    .replace(/[　\s]+/g, " ")
+    .replace(/(\d)\s+(?=\d)/g, "$1");
+}
+
+function sumRanges(text, pattern) {
+  let total = 0;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+      total += end - start + 1;
+    }
+  }
+  return total;
+}
+
+function countChapterMentions(text) {
+  const matches = text.match(/\d+\s*(?:章|編)/g);
+  return matches ? matches.length : 0;
 }
 
 window.tesnaviGemini = {
