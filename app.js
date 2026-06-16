@@ -1,5 +1,6 @@
 const STORAGE_KEY = "tesuraku-state-v1";
 const DEVICE_ID_KEY = "tesuraku-device-id";
+const RECAPTCHA_SITE_KEY = "6LdB3CEtAAAAACpt-mWbKil76U66ok5MhI_M23LJ";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDtT0cbLVsQ_89SxhkBMRZYdDmyyBLQo7U",
@@ -13,6 +14,7 @@ const firebaseConfig = {
 };
 
 const firebaseSync = {
+  appCheckReady: false,
   enabled: false,
   isApplyingRemote: false,
   saveTimer: null,
@@ -180,6 +182,9 @@ function initFirebaseSync() {
     const app = window.firebase.apps.length
       ? window.firebase.app()
       : window.firebase.initializeApp(firebaseConfig);
+
+    initFirebaseAppCheck();
+
     const database = window.firebase.database(app);
     const deviceId = getDeviceId();
 
@@ -216,6 +221,23 @@ function initFirebaseSync() {
   } catch (error) {
     console.warn("Firebase初期化に失敗しました。", error);
     updateFirebaseStatus("Firebase接続失敗", "offline");
+  }
+}
+
+function initFirebaseAppCheck() {
+  if (firebaseSync.appCheckReady) return;
+
+  if (!window.firebase.appCheck) {
+    console.warn("Firebase App Check SDKが読み込まれていません。");
+    return;
+  }
+
+  try {
+    // App Checkの適用後もRealtime DatabaseやAI Logicへアクセスできるようにする。
+    window.firebase.appCheck().activate(RECAPTCHA_SITE_KEY, true);
+    firebaseSync.appCheckReady = true;
+  } catch (error) {
+    console.warn("Firebase App Checkの初期化に失敗しました。", error);
   }
 }
 
