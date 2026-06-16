@@ -883,11 +883,16 @@ async function scanAssignmentImageDemo() {
   elements.scanAssignmentButton.disabled = true;
   elements.scanAssignmentButton.textContent = "読み取り中...";
   elements.scanResultList.innerHTML = '<p class="empty-message">Geminiで画像を読み取っています。</p>';
+  let scanErrorMessage = "";
 
   try {
     const gemini = await waitForGeminiModule();
     if (gemini && typeof gemini.scanAssignmentsFromImage === "function") {
       const assignments = await gemini.scanAssignmentsFromImage(file);
+      if (!Array.isArray(assignments) || assignments.length === 0) {
+        throw new Error("課題候補を読み取れませんでした。");
+      }
+
       state.scannedAssignments = assignments.map((assignment) => {
         return createScannedAssignment(
           assignment.subjectName,
@@ -901,14 +906,20 @@ async function scanAssignmentImageDemo() {
       state.scannedAssignments = createDemoAssignmentsFromImageName(file.name);
     }
   } catch (error) {
-    console.warn("Geminiでの課題読み取りに失敗しました。デモ候補を表示します。", error);
-    state.scannedAssignments = createDemoAssignmentsFromImageName(file.name);
+    console.warn("Geminiでの課題読み取りに失敗しました。", error);
+    state.scannedAssignments = [];
+    scanErrorMessage = "Geminiでの読み取りに失敗しました。混み合っている可能性があるので、少し待ってもう一度試してください。";
   } finally {
     elements.scanAssignmentButton.disabled = false;
     elements.scanAssignmentButton.textContent = originalText;
   }
 
   saveState();
+  if (scanErrorMessage) {
+    elements.scanResultList.innerHTML = `<p class="empty-message">${scanErrorMessage}</p>`;
+    return;
+  }
+
   renderScannedAssignments();
 }
 

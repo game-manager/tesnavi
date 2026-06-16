@@ -14,6 +14,7 @@ const firebaseConfig = {
 
 const MODEL_NAME = "gemini-3.5-flash";
 const AI_APP_NAME = "tesnavi-ai";
+const SCAN_RETRY_DELAYS = [1200, 2500, 5000];
 
 let model;
 let scanModel;
@@ -67,10 +68,10 @@ async function scanAssignmentsFromImage(file) {
   const inlineData = await fileToInlineData(file);
   const prompt = createAssignmentScanPrompt();
 
-  const result = await getScanModel().generateContent([
+  const result = await generateContentWithRetry(getScanModel(), [
     prompt,
     { inlineData }
-  ]);
+  ], "課題画像の読み取り");
 
   const firstPass = normalizeAssignments(await parseAssignmentsJSON(getResponseText(result)));
 
@@ -80,10 +81,10 @@ async function scanAssignmentsFromImage(file) {
 
   try {
     console.warn("課題読み取りの件数が少ないため、表専用プロンプトで再読み取りします。");
-    const retryResult = await getScanModel().generateContent([
+    const retryResult = await generateContentWithRetry(getScanModel(), [
       createAssignmentScanRetryPrompt(firstPass),
       { inlineData }
-    ]);
+    ], "課題画像の再読み取り");
     const retryPass = normalizeAssignments(await parseAssignmentsJSON(getResponseText(retryResult)));
     return retryPass.length >= firstPass.length ? mergeAssignments(retryPass, firstPass) : firstPass;
   } catch (error) {
@@ -223,7 +224,7 @@ async function repairAssignmentsJSON(brokenText) {
     brokenText
   ].join("\n");
 
-  const result = await getScanModel().generateContent(prompt);
+  const result = await generateContentWithRetry(getScanModel(), prompt, "課題JSONの修復");
   const repaired = getResponseText(result)
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
@@ -346,6 +347,42 @@ function sumRanges(text, pattern) {
 function countChapterMentions(text) {
   const matches = text.match(/\d+\s*(?:章|編)/g);
   return matches ? matches.length : 0;
+}
+
+async function generateContentWithRetry(targetModel, payload, label) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= SCAN_RETRY_DELAYS.length; attempt += 1) {
+    try {
+      return await targetModel.generateContent(payload);
+    } catch (error) {
+      lastError = error;
+      if (!isTemporaryGeminiError(error) || attempt === SCAN_RETRY_DELAYS.length) {
+        throw error;
+      }
+
+      const delayMs = SCAN_RETRY_DELAYS[attempt];
+      console.warn(`${label}に一時的に失敗しました。${attempt + 1}回目の再試行を待っています。`, error);
+      await wait(delayMs);
+    }
+  }
+
+  throw lastError;
+}
+
+function isTemporaryGeminiError(error) {
+  const text = `${error && error.code ? error.code : ""} ${error && error.message ? error.message : ""}`.toLowerCase();
+  return text.includes("500")
+    || text.includes("503")
+    || text.includes("429")
+    || text.includes("high demand")
+    || text.includes("temporar")
+    || text.includes("unavailable")
+    || text.includes("deadline");
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 window.tesnaviGemini = {
