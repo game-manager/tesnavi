@@ -111,6 +111,7 @@ const elements = {
   loginForm: document.getElementById("loginForm"),
   loginEmail: document.getElementById("loginEmail"),
   loginPassword: document.getElementById("loginPassword"),
+  googleLoginButton: document.getElementById("googleLoginButton"),
   logoutButton: document.getElementById("logoutButton"),
   accountStatusBadge: document.getElementById("accountStatusBadge"),
   accountStatusTitle: document.getElementById("accountStatusTitle"),
@@ -158,6 +159,7 @@ function bindEvents() {
   elements.scanAssignmentButton.addEventListener("click", scanAssignmentImageDemo);
   elements.registerForm.addEventListener("submit", registerAccount);
   elements.loginForm.addEventListener("submit", loginAccount);
+  elements.googleLoginButton.addEventListener("click", loginWithGoogle);
   elements.logoutButton.addEventListener("click", logoutAccount);
   elements.accountUpdateForm.addEventListener("submit", updateAccountInfo);
   elements.contactForm.addEventListener("submit", submitContact);
@@ -1509,6 +1511,22 @@ async function loginAccount(event) {
   }
 }
 
+async function loginWithGoogle() {
+  try {
+    const auth = getFirebaseAuth();
+    const provider = new window.firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: "select_account"
+    });
+
+    await auth.signInWithPopup(provider);
+    setAuthMessage("Googleアカウントでログインしました。アカウントのデータと同期します。", "success");
+  } catch (error) {
+    console.warn("Googleログインに失敗しました。", error);
+    setAuthMessage(getAuthErrorMessage(error), "error");
+  }
+}
+
 async function logoutAccount() {
   try {
     const auth = getFirebaseAuth();
@@ -1654,7 +1672,10 @@ function getAuthErrorMessage(error) {
   if (code.includes("wrong-password") || code.includes("invalid-credential")) return "メールアドレスまたはパスワードが違います。";
   if (code.includes("user-not-found")) return "このメールアドレスのアカウントが見つかりません。";
   if (code.includes("requires-recent-login")) return "安全のため、もう一度ログインしてから変更してください。";
-  if (code.includes("operation-not-allowed")) return "Firebase Consoleでメール/パスワードログインを有効にしてください。";
+  if (code.includes("popup-closed-by-user")) return "Googleログイン画面が閉じられました。もう一度試してください。";
+  if (code.includes("popup-blocked")) return "ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。";
+  if (code.includes("account-exists-with-different-credential")) return "同じメールアドレスの別ログイン方法がすでに登録されています。先にその方法でログインしてください。";
+  if (code.includes("operation-not-allowed")) return "Firebase Consoleでメール/パスワードまたはGoogleログインを有効にしてください。";
   if (message) return message;
   return "処理に失敗しました。時間をおいてもう一度試してください。";
 }

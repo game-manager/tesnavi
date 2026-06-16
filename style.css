@@ -491,6 +491,27 @@ select:focus {
   background: var(--red-50);
 }
 
+.google-button {
+  position: relative;
+  color: #344054;
+  background: #ffffff;
+  border: 1px solid #c8d3e4;
+  box-shadow: none;
+}
+
+.google-button::before {
+  content: "G";
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  color: #ffffff;
+  background: #4285f4;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
 .add-button {
   grid-column: span 1;
 }
