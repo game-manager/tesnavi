@@ -872,14 +872,41 @@ function handleAssignmentImageChange() {
   elements.assignmentPreviewEmpty.hidden = true;
 }
 
-function scanAssignmentImageDemo() {
+async function scanAssignmentImageDemo() {
   const file = elements.assignmentImageInput.files[0];
   if (!file) {
     alert("課題表の画像を選択してください。");
     return;
   }
 
-  state.scannedAssignments = createDemoAssignmentsFromImageName(file.name);
+  const originalText = elements.scanAssignmentButton.textContent;
+  elements.scanAssignmentButton.disabled = true;
+  elements.scanAssignmentButton.textContent = "読み取り中...";
+  elements.scanResultList.innerHTML = '<p class="empty-message">Geminiで画像を読み取っています。</p>';
+
+  try {
+    if (window.tesnaviGemini && typeof window.tesnaviGemini.scanAssignmentsFromImage === "function") {
+      const assignments = await window.tesnaviGemini.scanAssignmentsFromImage(file);
+      state.scannedAssignments = assignments.map((assignment) => {
+        return createScannedAssignment(
+          assignment.subjectName,
+          assignment.range,
+          assignment.amount,
+          assignment.unit,
+          assignment.weakness
+        );
+      });
+    } else {
+      state.scannedAssignments = createDemoAssignmentsFromImageName(file.name);
+    }
+  } catch (error) {
+    console.warn("Geminiでの課題読み取りに失敗しました。デモ候補を表示します。", error);
+    state.scannedAssignments = createDemoAssignmentsFromImageName(file.name);
+  } finally {
+    elements.scanAssignmentButton.disabled = false;
+    elements.scanAssignmentButton.textContent = originalText;
+  }
+
   saveState();
   renderScannedAssignments();
 }
@@ -1195,7 +1222,7 @@ function renderStats() {
   elements.progressBar.style.width = `${progress}%`;
 }
 
-function handleAIMessage(event) {
+async function handleAIMessage(event) {
   event.preventDefault();
 
   const text = elements.aiInput.value.trim();
@@ -1209,14 +1236,55 @@ function handleAIMessage(event) {
     text
   });
 
-  state.aiMessages.push({
+  const assistantMessage = {
     role: "assistant",
-    text: createDemoAIReply(text)
-  });
+    text: "Geminiに聞いています..."
+  };
+  state.aiMessages.push(assistantMessage);
 
   elements.aiInput.value = "";
   saveState();
   renderAIChat();
+
+  try {
+    assistantMessage.text = await requestGeminiAIReply(text);
+  } catch (error) {
+    console.warn("Gemini AI応答に失敗しました。デモ応答に切り替えます。", error);
+    assistantMessage.text = `${createDemoAIReply(text)}\n\n※Gemini接続に失敗したため、デモ応答を表示しています。`;
+  }
+
+  saveState();
+  renderAIChat();
+}
+
+async function requestGeminiAIReply(message) {
+  if (!window.tesnaviGemini || typeof window.tesnaviGemini.generateStudyReply !== "function") {
+    throw new Error("Geminiモジュールがまだ読み込まれていません。");
+  }
+
+  return window.tesnaviGemini.generateStudyReply(message, createGeminiContext());
+}
+
+function createGeminiContext() {
+  const todayPlan = getTodayPlan();
+  const today = startOfToday();
+  const upcomingEvents = state.events.filter((event) => {
+    const date = parseDate(event.date);
+    return date && date >= today;
+  }).slice(0, 8);
+
+  return {
+    today: toISODate(today),
+    test: state.basic,
+    subjects: state.subjects,
+    todayPlan,
+    unfinished: state.unfinished,
+    upcomingEvents,
+    progress: {
+      totalDays: state.plan.length,
+      doneDays: state.plan.filter((day) => day.status === "done").length
+    }
+  };
 }
 
 function renderAIChat() {
@@ -1226,7 +1294,7 @@ function renderAIChat() {
     ? state.aiMessages
     : [{
       role: "assistant",
-      text: "こんにちは。テスラクのデモAIです。\n勉強でわからないところ、計画の相談、ちょっと疲れたときの雑談まで、気軽に話してください。今はローカルの簡易応答ですが、あとでGemini APIに差し替えられる作りにしています。"
+      text: "こんにちは。テスナビのAIです。\n勉強でわからないところ、計画の相談、ちょっと疲れたときの雑談まで、気軽に話してください。Geminiで返答します。"
     }];
 
   messages.forEach((message) => {

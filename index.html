@@ -181,9 +181,9 @@
         <div class="section-title">
           <div>
             <h2>画像から課題を読み取り</h2>
-            <p class="section-description">DEMO版です。課題表の画像を選ぶと、課題候補を作成します。実用版ではGemini Vision等に差し替える想定です。</p>
+            <p class="section-description">Geminiで課題表の画像を読み取り、教科に追加できる候補を作ります。読み取れない場合はデモ候補を表示します。</p>
           </div>
-          <span class="section-note">Demo</span>
+          <span class="section-note">Gemini</span>
         </div>
         <div class="assignment-reader">
           <label class="assignment-upload">
@@ -194,7 +194,7 @@
             <img id="assignmentPreview" class="assignment-preview" alt="選択した課題画像のプレビュー" hidden>
             <p id="assignmentPreviewEmpty" class="empty-message">画像を選ぶとここにプレビューが表示されます。</p>
           </div>
-          <button id="scanAssignmentButton" class="button secondary-button main-action" type="button">課題を読み取る（DEMO）</button>
+          <button id="scanAssignmentButton" class="button secondary-button main-action" type="button">課題を読み取る</button>
         </div>
         <div id="scanResultList" class="scan-result-list" aria-live="polite"></div>
       </section>
@@ -209,9 +209,9 @@
         <div class="section-title">
           <div>
             <h2>あなたに寄り添うAI</h2>
-            <p class="section-description">デモ版です。勉強の質問、計画の相談、ちょっとした雑談にローカルで返答します。</p>
+            <p class="section-description">Geminiが勉強の質問、計画の相談、ちょっとした雑談に返答します。</p>
           </div>
-          <span class="section-note">Demo</span>
+          <span class="section-note">Gemini</span>
         </div>
 
         <div id="aiMessages" class="ai-messages" aria-live="polite"></div>
@@ -281,6 +281,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script type="module" src="gemini.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
