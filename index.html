@@ -22,21 +22,35 @@
 
   <main class="app-shell">
     <nav class="tab-nav" aria-label="画面切り替え" role="tablist">
-      <button class="tab-button active" type="button" data-tab="dashboard" aria-controls="dashboardTab" aria-selected="true" role="tab">
-        <span class="tab-icon">✓</span>
-        <span class="tab-label">ホーム</span>
+      <button class="tab-button active" type="button" data-tab="dashboard" aria-label="ホーム" aria-controls="dashboardTab" aria-selected="true" role="tab" title="ホーム">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3 11.4 12 4l9 7.4v8.1a1.5 1.5 0 0 1-1.5 1.5h-4.2v-5.8H8.7V21H4.5A1.5 1.5 0 0 1 3 19.5v-8.1Z"/></svg>
+        </span>
+        <span class="tab-label visually-hidden">ホーム</span>
       </button>
-      <button class="tab-button" type="button" data-tab="input" aria-controls="inputTab" aria-selected="false" role="tab">
-        <span class="tab-icon">+</span>
-        <span class="tab-label">入力</span>
+      <button class="tab-button" type="button" data-tab="input" aria-label="入力" aria-controls="inputTab" aria-selected="false" role="tab" title="入力">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
+        </span>
+        <span class="tab-label visually-hidden">入力</span>
       </button>
-      <button class="tab-button" type="button" data-tab="schedule" aria-controls="scheduleTab" aria-selected="false" role="tab">
-        <span class="tab-icon">予</span>
-        <span class="tab-label">計画</span>
+      <button class="tab-button" type="button" data-tab="schedule" aria-label="計画" aria-controls="scheduleTab" aria-selected="false" role="tab" title="計画">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M7 2h2v3h6V2h2v3h2.5A2.5 2.5 0 0 1 22 7.5v11A2.5 2.5 0 0 1 19.5 21h-15A2.5 2.5 0 0 1 2 18.5v-11A2.5 2.5 0 0 1 4.5 5H7V2Zm13 8H4v8.5c0 .3.2.5.5.5h15c.3 0 .5-.2.5-.5V10Z"/></svg>
+        </span>
+        <span class="tab-label visually-hidden">計画</span>
       </button>
-      <button class="tab-button" type="button" data-tab="ai" aria-controls="aiTab" aria-selected="false" role="tab">
-        <span class="tab-icon">AI</span>
-        <span class="tab-label">AI相談</span>
+      <button class="tab-button" type="button" data-tab="ai" aria-label="AI相談" aria-controls="aiTab" aria-selected="false" role="tab" title="AI相談">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 3a7 7 0 0 1 7 7v2.8a4 4 0 0 1-4 4H9l-4 3.1v-3.6A5.5 5.5 0 0 1 5 5.5 7 7 0 0 1 12 3Zm-3 7.5a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Zm6 0a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Zm-6.2 3.2h6.4v-1.8H8.8v1.8Z"/></svg>
+        </span>
+        <span class="tab-label visually-hidden">AI相談</span>
+      </button>
+      <button class="tab-button" type="button" data-tab="settings" aria-label="設定" aria-controls="settingsTab" aria-selected="false" role="tab" title="設定">
+        <span class="tab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M10.8 2h2.4l.5 2.6c.7.2 1.3.4 1.9.8l2.2-1.5 1.7 1.7L18 7.8c.3.6.6 1.2.8 1.9l2.6.5v2.4l-2.6.5c-.2.7-.4 1.3-.8 1.9l1.5 2.2-1.7 1.7-2.2-1.5c-.6.3-1.2.6-1.9.8l-.5 2.6h-2.4l-.5-2.6c-.7-.2-1.3-.4-1.9-.8l-2.2 1.5-1.7-1.7L6 15c-.3-.6-.6-1.2-.8-1.9l-2.6-.5v-2.4l2.6-.5c.2-.7.4-1.3.8-1.9L4.5 5.6l1.7-1.7 2.2 1.5c.6-.3 1.2-.6 1.9-.8L10.8 2Zm1.2 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+        </span>
+        <span class="tab-label visually-hidden">設定</span>
       </button>
     </nav>
 
@@ -232,6 +246,130 @@
       </section>
     </div>
 
+    <div id="settingsTab" class="tab-panel" data-panel="settings" role="tabpanel" hidden>
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <h2>設定</h2>
+            <p class="section-description">ログインしなくても使えます。ログインすると、別の端末でも同じテスナビのデータを使えます。</p>
+          </div>
+          <span id="accountStatusBadge" class="section-note">未ログイン</span>
+        </div>
+
+        <div class="account-status-card">
+          <div>
+            <span class="status-label">アカウント状態</span>
+            <strong id="accountStatusTitle">端末内保存で利用中</strong>
+            <p id="accountStatusDescription" class="section-description">この端末には保存されますが、別の端末からは同じデータにアクセスできません。</p>
+          </div>
+          <button id="logoutButton" class="button secondary-button small-button" type="button" hidden>ログアウト</button>
+        </div>
+      </section>
+
+      <section class="panel auth-grid-panel">
+        <div class="section-title">
+          <div>
+            <h2>アカウント</h2>
+            <p class="section-description">メールアドレスとパスワードで登録・ログインできます。登録は任意です。</p>
+          </div>
+        </div>
+
+        <div class="auth-grid">
+          <form id="registerForm" class="settings-form">
+            <h3>新規登録</h3>
+            <label>
+              <span>メールアドレス</span>
+              <input id="registerEmail" type="email" autocomplete="email" placeholder="name@example.com">
+            </label>
+            <label>
+              <span>パスワード</span>
+              <input id="registerPassword" type="password" autocomplete="new-password" minlength="6" placeholder="6文字以上">
+            </label>
+            <label>
+              <span>パスワード確認</span>
+              <input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="6" placeholder="もう一度入力">
+            </label>
+            <button class="button primary-button" type="submit">登録して同期を始める</button>
+          </form>
+
+          <form id="loginForm" class="settings-form">
+            <h3>ログイン</h3>
+            <label>
+              <span>メールアドレス</span>
+              <input id="loginEmail" type="email" autocomplete="email" placeholder="name@example.com">
+            </label>
+            <label>
+              <span>パスワード</span>
+              <input id="loginPassword" type="password" autocomplete="current-password" placeholder="パスワード">
+            </label>
+            <button class="button secondary-button" type="submit">ログインして同期する</button>
+            <p class="settings-hint">ログインしない場合は、この端末だけにデータが保存されます。</p>
+          </form>
+        </div>
+        <p id="authMessage" class="settings-message" aria-live="polite"></p>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <h2>その他</h2>
+            <p class="section-description">ログイン情報の確認・変更と、お問い合わせはこちらです。</p>
+          </div>
+        </div>
+
+        <div class="settings-stack">
+          <div class="settings-box">
+            <h3>ログイン情報変更・確認</h3>
+            <dl class="account-detail-list">
+              <div>
+                <dt>ログイン状態</dt>
+                <dd id="accountLoginState">未ログイン</dd>
+              </div>
+              <div>
+                <dt>メールアドレス</dt>
+                <dd id="accountEmailDisplay">未登録</dd>
+              </div>
+              <div>
+                <dt>ユーザーID</dt>
+                <dd id="accountUidDisplay">未登録</dd>
+              </div>
+            </dl>
+            <form id="accountUpdateForm" class="settings-form compact-settings-form">
+              <label>
+                <span>新しいメールアドレス</span>
+                <input id="accountNewEmail" type="email" autocomplete="email" placeholder="変更しない場合は空欄">
+              </label>
+              <label>
+                <span>新しいパスワード</span>
+                <input id="accountNewPassword" type="password" autocomplete="new-password" minlength="6" placeholder="変更しない場合は空欄">
+              </label>
+              <button class="button secondary-button" type="submit">ログイン情報を変更</button>
+            </form>
+          </div>
+
+          <div class="settings-box">
+            <h3>お問い合わせ</h3>
+            <form id="contactForm" class="settings-form compact-settings-form">
+              <label>
+                <span>名前</span>
+                <input id="contactName" type="text" placeholder="任意">
+              </label>
+              <label>
+                <span>返信先メール</span>
+                <input id="contactEmail" type="email" autocomplete="email" placeholder="任意">
+              </label>
+              <label>
+                <span>内容</span>
+                <textarea id="contactMessage" rows="4" placeholder="困っていることや要望を書いてください。"></textarea>
+              </label>
+              <button class="button primary-button" type="submit">お問い合わせを送信</button>
+            </form>
+            <p id="contactMessageStatus" class="settings-message" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <div id="dashboardTab" class="tab-panel active" data-panel="dashboard" role="tabpanel">
       <section class="panel dashboard-hero">
         <div class="dashboard-main-copy">
@@ -280,6 +418,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
   <script type="module" src="gemini.js"></script>
   <script src="app.js"></script>

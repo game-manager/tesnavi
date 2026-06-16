@@ -1,5 +1,6 @@
 const STORAGE_KEY = "tesuraku-state-v1";
 const DEVICE_ID_KEY = "tesuraku-device-id";
+const CONTACT_DRAFTS_KEY = "tesuraku-contact-drafts";
 const RECAPTCHA_SITE_KEY = "6LdB3CEtAAAAACpt-mWbKil76U66ok5MhI_M23LJ";
 
 const firebaseConfig = {
@@ -15,10 +16,18 @@ const firebaseConfig = {
 
 const firebaseSync = {
   appCheckReady: false,
+  auth: null,
+  currentPath: "",
+  database: null,
   enabled: false,
   isApplyingRemote: false,
   saveTimer: null,
-  stateRef: null
+  stateRef: null,
+  valueHandler: null
+};
+
+const accountState = {
+  user: null
 };
 
 const weightMap = {
@@ -94,7 +103,30 @@ const elements = {
   assignmentPreviewEmpty: document.getElementById("assignmentPreviewEmpty"),
   scanAssignmentButton: document.getElementById("scanAssignmentButton"),
   scanResultList: document.getElementById("scanResultList"),
-  firebaseStatus: document.getElementById("firebaseStatus")
+  firebaseStatus: document.getElementById("firebaseStatus"),
+  registerForm: document.getElementById("registerForm"),
+  registerEmail: document.getElementById("registerEmail"),
+  registerPassword: document.getElementById("registerPassword"),
+  registerPasswordConfirm: document.getElementById("registerPasswordConfirm"),
+  loginForm: document.getElementById("loginForm"),
+  loginEmail: document.getElementById("loginEmail"),
+  loginPassword: document.getElementById("loginPassword"),
+  logoutButton: document.getElementById("logoutButton"),
+  accountStatusBadge: document.getElementById("accountStatusBadge"),
+  accountStatusTitle: document.getElementById("accountStatusTitle"),
+  accountStatusDescription: document.getElementById("accountStatusDescription"),
+  accountLoginState: document.getElementById("accountLoginState"),
+  accountEmailDisplay: document.getElementById("accountEmailDisplay"),
+  accountUidDisplay: document.getElementById("accountUidDisplay"),
+  authMessage: document.getElementById("authMessage"),
+  accountUpdateForm: document.getElementById("accountUpdateForm"),
+  accountNewEmail: document.getElementById("accountNewEmail"),
+  accountNewPassword: document.getElementById("accountNewPassword"),
+  contactForm: document.getElementById("contactForm"),
+  contactName: document.getElementById("contactName"),
+  contactEmail: document.getElementById("contactEmail"),
+  contactMessage: document.getElementById("contactMessage"),
+  contactMessageStatus: document.getElementById("contactMessageStatus")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -124,6 +156,11 @@ function bindEvents() {
   elements.aiForm.addEventListener("submit", handleAIMessage);
   elements.assignmentImageInput.addEventListener("change", handleAssignmentImageChange);
   elements.scanAssignmentButton.addEventListener("click", scanAssignmentImageDemo);
+  elements.registerForm.addEventListener("submit", registerAccount);
+  elements.loginForm.addEventListener("submit", loginAccount);
+  elements.logoutButton.addEventListener("click", logoutAccount);
+  elements.accountUpdateForm.addEventListener("submit", updateAccountInfo);
+  elements.contactForm.addEventListener("submit", submitContact);
 
   elements.aiSuggestions.forEach((button) => {
     button.addEventListener("click", () => {
@@ -189,39 +226,12 @@ async function initFirebaseSync() {
       updateFirebaseStatus("App Check未確認", "syncing");
     }
 
-    const database = window.firebase.database(app);
-    const deviceId = getDeviceId();
-
-    firebaseSync.stateRef = database.ref(`tesuraku/users/${deviceId}/state`);
+    firebaseSync.database = window.firebase.database(app);
     firebaseSync.enabled = true;
     updateFirebaseStatus("Firebase接続中", "syncing");
 
-    firebaseSync.stateRef.on("value", (snapshot) => {
-      const remoteState = snapshot.val();
-
-      if (!remoteState) {
-        queueFirebaseSave(createStateSnapshot());
-        updateFirebaseStatus("Firebase接続済み", "online");
-        return;
-      }
-
-      const localUpdatedAt = getLocalUpdatedAt();
-      const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
-
-      if (remoteUpdatedAt > localUpdatedAt) {
-        firebaseSync.isApplyingRemote = true;
-        applyStateSnapshot(remoteState);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteState));
-        fillBasicForm();
-        renderAll();
-        firebaseSync.isApplyingRemote = false;
-      }
-
-      updateFirebaseStatus("Firebase同期済み", "online");
-    }, (error) => {
-      console.warn("Firebaseの読み込みに失敗しました。", error);
-      updateFirebaseStatus(getFirebaseErrorLabel(error, "Firebase同期エラー"), "offline");
-    });
+    initFirebaseAuth(app);
+    connectFirebaseStateRef();
   } catch (error) {
     console.warn("Firebase初期化に失敗しました。", error);
     updateFirebaseStatus(getFirebaseErrorLabel(error, "Firebase接続失敗"), "offline");
@@ -252,6 +262,76 @@ async function initFirebaseAppCheck() {
     console.warn("Firebase App Checkの初期化に失敗しました。", error);
     return false;
   }
+}
+
+function initFirebaseAuth(app) {
+  if (!window.firebase.auth) {
+    setAuthMessage("ログイン機能の読み込みに失敗しました。しばらくしてから再読み込みしてください。", "error");
+    renderAccountSettings();
+    return;
+  }
+
+  firebaseSync.auth = window.firebase.auth(app);
+  firebaseSync.auth.onAuthStateChanged((user) => {
+    accountState.user = user || null;
+    renderAccountSettings();
+    connectFirebaseStateRef();
+  });
+}
+
+function connectFirebaseStateRef() {
+  if (!firebaseSync.database) return;
+
+  const nextPath = getFirebaseStatePath();
+  if (firebaseSync.currentPath === nextPath && firebaseSync.stateRef) return;
+
+  if (firebaseSync.stateRef && firebaseSync.valueHandler) {
+    firebaseSync.stateRef.off("value", firebaseSync.valueHandler);
+  }
+
+  firebaseSync.currentPath = nextPath;
+  firebaseSync.stateRef = firebaseSync.database.ref(nextPath);
+  firebaseSync.valueHandler = handleRemoteStateSnapshot;
+
+  updateFirebaseStatus(accountState.user ? "アカウント同期中" : "端末同期中", "syncing");
+  firebaseSync.stateRef.on("value", firebaseSync.valueHandler, (error) => {
+    console.warn("Firebaseの読み込みに失敗しました。", error);
+    updateFirebaseStatus(getFirebaseErrorLabel(error, "Firebase同期エラー"), "offline");
+  });
+}
+
+function getFirebaseStatePath() {
+  if (accountState.user) {
+    return `tesuraku/accounts/${accountState.user.uid}/state`;
+  }
+
+  return `tesuraku/users/${getDeviceId()}/state`;
+}
+
+function handleRemoteStateSnapshot(snapshot) {
+  const remoteState = snapshot.val();
+
+  if (!remoteState) {
+    queueFirebaseSave(createStateSnapshot());
+    updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "端末保存済み", "online");
+    return;
+  }
+
+  const localUpdatedAt = getLocalUpdatedAt();
+  const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
+
+  if (remoteUpdatedAt > localUpdatedAt) {
+    firebaseSync.isApplyingRemote = true;
+    applyStateSnapshot(remoteState);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteState));
+    fillBasicForm();
+    renderAll();
+    firebaseSync.isApplyingRemote = false;
+  } else if (localUpdatedAt > remoteUpdatedAt) {
+    queueFirebaseSave(createStateSnapshot());
+  }
+
+  updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "端末保存済み", "online");
 }
 
 function getFirebaseErrorLabel(error, fallback) {
@@ -702,6 +782,7 @@ function renderAll() {
   renderStats();
   renderDashboardNext();
   renderAIChat();
+  renderAccountSettings();
 }
 
 function renderDashboardNext() {
@@ -1371,6 +1452,211 @@ function renderAIChat() {
   });
 
   elements.aiMessages.scrollTop = elements.aiMessages.scrollHeight;
+}
+
+async function registerAccount(event) {
+  event.preventDefault();
+
+  const email = elements.registerEmail.value.trim();
+  const password = elements.registerPassword.value;
+  const confirm = elements.registerPasswordConfirm.value;
+
+  if (!email || !password || !confirm) {
+    setAuthMessage("メールアドレスとパスワードを入力してください。", "error");
+    return;
+  }
+
+  if (password.length < 6) {
+    setAuthMessage("パスワードは6文字以上にしてください。", "error");
+    return;
+  }
+
+  if (password !== confirm) {
+    setAuthMessage("パスワード確認が一致していません。", "error");
+    return;
+  }
+
+  try {
+    const auth = getFirebaseAuth();
+    await auth.createUserWithEmailAndPassword(email, password);
+    elements.registerForm.reset();
+    setAuthMessage("登録しました。これからはアカウントにデータを同期します。", "success");
+  } catch (error) {
+    console.warn("新規登録に失敗しました。", error);
+    setAuthMessage(getAuthErrorMessage(error), "error");
+  }
+}
+
+async function loginAccount(event) {
+  event.preventDefault();
+
+  const email = elements.loginEmail.value.trim();
+  const password = elements.loginPassword.value;
+
+  if (!email || !password) {
+    setAuthMessage("メールアドレスとパスワードを入力してください。", "error");
+    return;
+  }
+
+  try {
+    const auth = getFirebaseAuth();
+    await auth.signInWithEmailAndPassword(email, password);
+    elements.loginForm.reset();
+    setAuthMessage("ログインしました。アカウントのデータと同期します。", "success");
+  } catch (error) {
+    console.warn("ログインに失敗しました。", error);
+    setAuthMessage(getAuthErrorMessage(error), "error");
+  }
+}
+
+async function logoutAccount() {
+  try {
+    const auth = getFirebaseAuth();
+    await auth.signOut();
+    setAuthMessage("ログアウトしました。この端末内保存に戻ります。", "success");
+  } catch (error) {
+    console.warn("ログアウトに失敗しました。", error);
+    setAuthMessage(getAuthErrorMessage(error), "error");
+  }
+}
+
+async function updateAccountInfo(event) {
+  event.preventDefault();
+
+  const user = accountState.user;
+  if (!user) {
+    setAuthMessage("ログイン情報を変更するには、先にログインしてください。", "error");
+    return;
+  }
+
+  const nextEmail = elements.accountNewEmail.value.trim();
+  const nextPassword = elements.accountNewPassword.value;
+
+  if (!nextEmail && !nextPassword) {
+    setAuthMessage("変更したいメールアドレスかパスワードを入力してください。", "error");
+    return;
+  }
+
+  try {
+    if (nextEmail && nextEmail !== user.email) {
+      await user.updateEmail(nextEmail);
+    }
+
+    if (nextPassword) {
+      if (nextPassword.length < 6) {
+        setAuthMessage("新しいパスワードは6文字以上にしてください。", "error");
+        return;
+      }
+      await user.updatePassword(nextPassword);
+    }
+
+    await user.reload();
+    accountState.user = getFirebaseAuth().currentUser;
+    elements.accountUpdateForm.reset();
+    renderAccountSettings();
+    setAuthMessage("ログイン情報を更新しました。", "success");
+  } catch (error) {
+    console.warn("ログイン情報の更新に失敗しました。", error);
+    setAuthMessage(getAuthErrorMessage(error), "error");
+  }
+}
+
+async function submitContact(event) {
+  event.preventDefault();
+
+  const message = elements.contactMessage.value.trim();
+  if (!message) {
+    setContactMessage("お問い合わせ内容を入力してください。", "error");
+    return;
+  }
+
+  const inquiry = {
+    id: createId(),
+    name: elements.contactName.value.trim(),
+    email: elements.contactEmail.value.trim(),
+    message,
+    userId: accountState.user ? accountState.user.uid : "",
+    createdAt: Date.now()
+  };
+
+  try {
+    if (!firebaseSync.database) {
+      throw new Error("Firebase Database is not ready.");
+    }
+
+    await firebaseSync.database.ref(`tesuraku/inquiries/${inquiry.id}`).set(inquiry);
+    elements.contactForm.reset();
+    setContactMessage("お問い合わせを送信しました。", "success");
+  } catch (error) {
+    console.warn("お問い合わせの送信に失敗しました。端末内に控えを保存します。", error);
+    saveContactDraft(inquiry);
+    elements.contactForm.reset();
+    setContactMessage("送信できなかったため、この端末に控えを保存しました。", "error");
+  }
+}
+
+function getFirebaseAuth() {
+  if (!firebaseSync.auth) {
+    throw new Error("ログイン機能の準備ができていません。");
+  }
+
+  return firebaseSync.auth;
+}
+
+function renderAccountSettings() {
+  const user = accountState.user;
+  const isLoggedIn = Boolean(user);
+  const email = user && user.email ? user.email : "未登録";
+  const uid = user && user.uid ? user.uid : "未登録";
+
+  elements.accountStatusBadge.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
+  elements.accountStatusTitle.textContent = isLoggedIn ? "アカウント同期で利用中" : "端末内保存で利用中";
+  elements.accountStatusDescription.textContent = isLoggedIn
+    ? "このアカウントでログインすれば、別の端末からも同じデータにアクセスできます。"
+    : "この端末には保存されますが、別の端末からは同じデータにアクセスできません。";
+  elements.logoutButton.hidden = !isLoggedIn;
+  elements.accountLoginState.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
+  elements.accountEmailDisplay.textContent = email;
+  elements.accountUidDisplay.textContent = uid;
+}
+
+function setAuthMessage(message, type) {
+  elements.authMessage.textContent = message;
+  elements.authMessage.className = `settings-message ${type || ""}`.trim();
+}
+
+function setContactMessage(message, type) {
+  elements.contactMessageStatus.textContent = message;
+  elements.contactMessageStatus.className = `settings-message ${type || ""}`.trim();
+}
+
+function saveContactDraft(inquiry) {
+  const saved = localStorage.getItem(CONTACT_DRAFTS_KEY);
+  let drafts = [];
+
+  try {
+    drafts = saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    drafts = [];
+  }
+
+  drafts.push(inquiry);
+  localStorage.setItem(CONTACT_DRAFTS_KEY, JSON.stringify(drafts.slice(-20)));
+}
+
+function getAuthErrorMessage(error) {
+  const code = String(error && error.code ? error.code : "");
+  const message = String(error && error.message ? error.message : "");
+
+  if (code.includes("email-already-in-use")) return "このメールアドレスはすでに登録されています。";
+  if (code.includes("invalid-email")) return "メールアドレスの形式を確認してください。";
+  if (code.includes("weak-password")) return "パスワードは6文字以上にしてください。";
+  if (code.includes("wrong-password") || code.includes("invalid-credential")) return "メールアドレスまたはパスワードが違います。";
+  if (code.includes("user-not-found")) return "このメールアドレスのアカウントが見つかりません。";
+  if (code.includes("requires-recent-login")) return "安全のため、もう一度ログインしてから変更してください。";
+  if (code.includes("operation-not-allowed")) return "Firebase Consoleでメール/パスワードログインを有効にしてください。";
+  if (message) return message;
+  return "処理に失敗しました。時間をおいてもう一度試してください。";
 }
 
 function createDemoAIReply(message) {

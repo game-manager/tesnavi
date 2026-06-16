@@ -169,9 +169,9 @@ h2 {
   bottom: max(14px, env(safe-area-inset-bottom));
   z-index: 50;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
-  width: min(620px, calc(100% - 28px));
+  width: min(560px, calc(100% - 28px));
   padding: 6px;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid var(--line);
@@ -183,7 +183,7 @@ h2 {
 
 .tab-button {
   min-height: 50px;
-  padding: 6px 8px;
+  padding: 6px;
   color: var(--muted);
   background: transparent;
   border: 0;
@@ -204,23 +204,23 @@ h2 {
 .tab-icon {
   display: grid;
   place-items: center;
-  width: 21px;
-  height: 21px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   background: #edf4ff;
   color: var(--blue-700);
-  font-size: 0.74rem;
   line-height: 1;
+}
+
+.tab-icon svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
 }
 
 .tab-button.active .tab-icon {
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
-}
-
-.tab-label {
-  font-size: 0.78rem;
-  line-height: 1.2;
 }
 
 .tab-panel[hidden] {
@@ -1050,6 +1050,105 @@ select:focus {
   font-weight: 700;
 }
 
+.account-status-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 18px;
+  background: #f8fbff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+}
+
+.account-status-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.2rem;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.settings-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  background: #fbfdff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.settings-form h3,
+.settings-box h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.compact-settings-form {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.settings-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-box {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  background: #fbfdff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.account-detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.account-detail-list div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e7eef9;
+}
+
+.account-detail-list dt {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.account-detail-list dd {
+  margin: 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.settings-hint,
+.settings-message {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.settings-message.success {
+  color: var(--green-600);
+}
+
+.settings-message.error {
+  color: var(--red-600);
+}
+
 @media (max-width: 900px) {
   .status-grid,
   .dashboard-hero,
@@ -1057,6 +1156,7 @@ select:focus {
   .subject-list,
   .event-list,
   .scan-result-list,
+  .auth-grid,
   .assignment-reader,
   .ai-form,
   .actions {
@@ -1157,9 +1257,15 @@ select:focus {
 
   .section-title,
   .plan-head,
-  .card-top {
+  .card-top,
+  .account-status-card {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .account-detail-list div {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 
   .dashboard-actions {
