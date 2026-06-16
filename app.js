@@ -971,6 +971,15 @@ function renderScannedAssignments() {
     return;
   }
 
+  const toolbar = document.createElement("div");
+  toolbar.className = "scan-result-toolbar";
+  toolbar.innerHTML = `
+    <p>${state.scannedAssignments.length}件の候補があります。</p>
+    <button class="button primary-button small-button" type="button">全て教科に追加</button>
+  `;
+  toolbar.querySelector("button").addEventListener("click", addAllScannedAssignmentsToSubjects);
+  elements.scanResultList.appendChild(toolbar);
+
   state.scannedAssignments.forEach((assignment) => {
     const card = document.createElement("article");
     card.className = "scan-result-card";
@@ -1001,6 +1010,25 @@ function addScannedAssignmentToSubjects(id) {
   });
 
   state.scannedAssignments = state.scannedAssignments.filter((item) => item.id !== id);
+  saveState();
+  renderAll();
+}
+
+function addAllScannedAssignmentsToSubjects() {
+  if (state.scannedAssignments.length === 0) return;
+
+  state.scannedAssignments.forEach((assignment) => {
+    state.subjects.push({
+      id: createId(),
+      name: assignment.subjectName,
+      range: assignment.range,
+      amount: Number(assignment.amount),
+      unit: assignment.unit,
+      weakness: assignment.weakness
+    });
+  });
+
+  state.scannedAssignments = [];
   saveState();
   renderAll();
 }

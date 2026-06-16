@@ -539,6 +539,24 @@ select:focus {
   border-left-color: var(--yellow-600);
 }
 
+.scan-result-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: var(--blue-50);
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+}
+
+.scan-result-toolbar p {
+  margin: 0;
+  color: var(--blue-700);
+  font-weight: 800;
+}
+
 .card-top {
   display: flex;
   justify-content: space-between;
@@ -1172,6 +1190,11 @@ select:focus {
 
   .scan-result-card {
     flex-direction: column;
+  }
+
+  .scan-result-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .ai-messages {
