@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>テスラク</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">Study Plan Maker</p>
+        <h1>テスラク</h1>
+        <p class="subtitle">テスト計画を自動で作ろう</p>
+      </div>
+      <div class="header-actions">
+        <span id="firebaseStatus" class="firebase-status offline">Firebase未接続</span>
+        <button id="resetButton" class="button danger-button" type="button">すべてリセット</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <nav class="tab-nav" aria-label="画面切り替え" role="tablist">
+      <button class="tab-button active" type="button" data-tab="dashboard" aria-controls="dashboardTab" aria-selected="true" role="tab">
+        <span class="tab-icon">進</span>
+        <span class="tab-label">ダッシュボード</span>
+      </button>
+      <button class="tab-button" type="button" data-tab="input" aria-controls="inputTab" aria-selected="false" role="tab">
+        <span class="tab-icon">+</span>
+        <span class="tab-label">入力</span>
+      </button>
+      <button class="tab-button" type="button" data-tab="schedule" aria-controls="scheduleTab" aria-selected="false" role="tab">
+        <span class="tab-icon">予</span>
+        <span class="tab-label">スケジュール</span>
+      </button>
+      <button class="tab-button" type="button" data-tab="ai" aria-controls="aiTab" aria-selected="false" role="tab">
+        <span class="tab-icon">AI</span>
+        <span class="tab-label">寄り添うAI</span>
+      </button>
+    </nav>
+
+    <div id="scheduleTab" class="tab-panel" data-panel="schedule" role="tabpanel" hidden>
+      <section class="panel plan-panel">
+        <div class="section-title">
+          <h2>今日のTodo</h2>
+          <span id="planName" class="section-note"></span>
+        </div>
+        <div id="todayTodoList" class="today-todo-list" aria-live="polite">
+          <p class="empty-message">入力（+）タブで基本情報と教科を入力して、計画を作成してください。</p>
+        </div>
+      </section>
+
+      <section class="panel calendar-panel">
+        <div class="section-title">
+          <h2>カレンダー</h2>
+          <span id="calendarTitle" class="section-note"></span>
+        </div>
+        <div id="calendarList" class="calendar-list" aria-live="polite">
+          <p class="empty-message">計画を作成すると、ここにカレンダー形式で表示されます。</p>
+        </div>
+      </section>
+
+      <section class="actions single-action">
+        <button id="redistributeButton" class="button secondary-button main-action" type="button">未完了分を再配分する</button>
+      </section>
+    </div>
+
+    <div id="inputTab" class="tab-panel" data-panel="input" role="tabpanel" hidden>
+      <section class="panel">
+        <div class="section-title">
+          <h2>基本情報</h2>
+        </div>
+        <form id="basicForm" class="form-grid">
+          <label>
+            <span>テスト名</span>
+            <input id="testName" type="text" placeholder="例：1学期期末テスト">
+          </label>
+          <label>
+            <span>計画開始日</span>
+            <input id="startDate" type="date">
+          </label>
+          <label>
+            <span>テスト開始日</span>
+            <input id="testDate" type="date">
+          </label>
+          <label>
+            <span>平日の1日の勉強時間（分）</span>
+            <input id="weekdayMinutes" type="number" min="1" step="5" placeholder="例：90">
+          </label>
+          <label>
+            <span>休日の1日の勉強時間（分）</span>
+            <input id="weekendMinutes" type="number" min="1" step="5" placeholder="例：180">
+          </label>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <h2>教科追加</h2>
+        </div>
+        <form id="subjectForm" class="subject-form">
+          <label>
+            <span>教科名</span>
+            <input id="subjectName" type="text" placeholder="例：数学">
+          </label>
+          <label class="wide-field">
+            <span>テスト範囲</span>
+            <input id="subjectRange" type="text" placeholder="例：ワークP10〜P45">
+          </label>
+          <label>
+            <span>勉強量</span>
+            <input id="studyAmount" type="number" min="1" step="1" placeholder="例：36">
+          </label>
+          <label>
+            <span>単位</span>
+            <select id="studyUnit">
+              <option value="ページ">ページ</option>
+              <option value="個">個</option>
+              <option value="問">問</option>
+              <option value="章">章</option>
+            </select>
+          </label>
+          <label>
+            <span>苦手度</span>
+            <select id="weakness">
+              <option value="得意">得意</option>
+              <option value="普通" selected>普通</option>
+              <option value="苦手">苦手</option>
+            </select>
+          </label>
+          <button class="button primary-button add-button" type="submit">教科を追加</button>
+        </form>
+
+        <div id="subjectList" class="subject-list" aria-live="polite"></div>
+      </section>
+
+      <section class="actions single-action">
+        <button id="generateButton" class="button primary-button main-action" type="button">計画を作成する</button>
+      </section>
+    </div>
+
+    <div id="aiTab" class="tab-panel" data-panel="ai" role="tabpanel" hidden>
+      <section class="panel ai-panel">
+        <div class="section-title">
+          <div>
+            <h2>あなたに寄り添うAI</h2>
+            <p class="section-description">デモ版です。勉強の質問、計画の相談、ちょっとした雑談にローカルで返答します。</p>
+          </div>
+          <span class="section-note">Demo</span>
+        </div>
+
+        <div id="aiMessages" class="ai-messages" aria-live="polite"></div>
+
+        <div class="ai-suggestions" aria-label="質問例">
+          <button class="ai-suggestion" type="button" data-ai-prompt="数学の勉強でわからない問題があるとき、どう進めればいい？">数学の相談</button>
+          <button class="ai-suggestion" type="button" data-ai-prompt="英単語を覚えるコツを教えて">英単語のコツ</button>
+          <button class="ai-suggestion" type="button" data-ai-prompt="今日はやる気が出ない。どうしたらいい？">やる気が出ない</button>
+        </div>
+
+        <form id="aiForm" class="ai-form">
+          <label class="ai-input-label">
+            <span>メッセージ</span>
+            <textarea id="aiInput" rows="3" placeholder="例：理科の暗記が苦手。どう勉強したらいい？"></textarea>
+          </label>
+          <button class="button primary-button ai-send-button" type="submit">送信</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="dashboardTab" class="tab-panel active" data-panel="dashboard" role="tabpanel">
+      <section class="panel dashboard-hero">
+        <div class="dashboard-main-copy">
+          <p class="eyebrow">Next Study</p>
+          <h2 id="dashboardNextTitle">次の予定</h2>
+          <p id="dashboardNextMeta" class="dashboard-meta">入力タブで計画を作成してください。</p>
+          <div class="dashboard-actions">
+            <button id="goInputButton" class="button primary-button small-button" type="button">入力する</button>
+            <button id="goScheduleButton" class="button secondary-button small-button" type="button">予定を見る</button>
+          </div>
+        </div>
+        <div id="dashboardNextItems" class="dashboard-next-items">
+          <p class="empty-message">まだ予定がありません。</p>
+        </div>
+      </section>
+
+      <section class="status-grid" aria-label="計画の状況">
+        <div class="status-card status-days highlight">
+          <span class="status-label">テスト日まで</span>
+          <strong id="daysLeft">--</strong>
+        </div>
+        <div class="status-card status-progress">
+          <span class="status-label">進捗率</span>
+          <strong id="progressText">0%</strong>
+          <div class="progress-track" aria-hidden="true">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+        </div>
+        <div class="status-card status-subjects">
+          <span class="status-label">登録教科</span>
+          <strong id="subjectCount">0教科</strong>
+        </div>
+      </section>
+
+      <section class="panel unfinished-panel">
+        <div class="section-title">
+          <h2>未完了リスト</h2>
+          <span id="unfinishedCount" class="section-note">0件</span>
+        </div>
+        <div id="unfinishedList" class="unfinished-list" aria-live="polite">
+          <p class="empty-message">未完了の予定はありません。</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
