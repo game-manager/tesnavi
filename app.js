@@ -885,8 +885,9 @@ async function scanAssignmentImageDemo() {
   elements.scanResultList.innerHTML = '<p class="empty-message">Geminiで画像を読み取っています。</p>';
 
   try {
-    if (window.tesnaviGemini && typeof window.tesnaviGemini.scanAssignmentsFromImage === "function") {
-      const assignments = await window.tesnaviGemini.scanAssignmentsFromImage(file);
+    const gemini = await waitForGeminiModule();
+    if (gemini && typeof gemini.scanAssignmentsFromImage === "function") {
+      const assignments = await gemini.scanAssignmentsFromImage(file);
       state.scannedAssignments = assignments.map((assignment) => {
         return createScannedAssignment(
           assignment.subjectName,
@@ -1258,11 +1259,34 @@ async function handleAIMessage(event) {
 }
 
 async function requestGeminiAIReply(message) {
-  if (!window.tesnaviGemini || typeof window.tesnaviGemini.generateStudyReply !== "function") {
+  const gemini = await waitForGeminiModule();
+  if (!gemini || typeof gemini.generateStudyReply !== "function") {
     throw new Error("Geminiモジュールがまだ読み込まれていません。");
   }
 
-  return window.tesnaviGemini.generateStudyReply(message, createGeminiContext());
+  return gemini.generateStudyReply(message, createGeminiContext());
+}
+
+function waitForGeminiModule(timeoutMs = 6000) {
+  const startedAt = Date.now();
+
+  return new Promise((resolve) => {
+    const check = () => {
+      if (window.tesnaviGemini) {
+        resolve(window.tesnaviGemini);
+        return;
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(null);
+        return;
+      }
+
+      setTimeout(check, 120);
+    };
+
+    check();
+  });
 }
 
 function createGeminiContext() {
