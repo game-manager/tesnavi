@@ -135,6 +135,70 @@
         <div id="subjectList" class="subject-list" aria-live="polite"></div>
       </section>
 
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <h2>部活・予定</h2>
+            <p class="section-description">部活や習い事、家族の予定を入れると、その日は少し軽めの計画になります。</p>
+          </div>
+        </div>
+        <form id="eventForm" class="event-form">
+          <label>
+            <span>予定名</span>
+            <input id="eventTitle" type="text" placeholder="例：サッカー部">
+          </label>
+          <label>
+            <span>日付</span>
+            <input id="eventDate" type="date">
+          </label>
+          <label>
+            <span>開始</span>
+            <input id="eventStart" type="time">
+          </label>
+          <label>
+            <span>終了</span>
+            <input id="eventEnd" type="time">
+          </label>
+          <label>
+            <span>種類</span>
+            <select id="eventType">
+              <option value="部活">部活</option>
+              <option value="習い事">習い事</option>
+              <option value="学校行事">学校行事</option>
+              <option value="予定">予定</option>
+            </select>
+          </label>
+          <label class="wide-field">
+            <span>メモ</span>
+            <input id="eventNote" type="text" placeholder="例：帰宅が遅いので軽めにする">
+          </label>
+          <button class="button secondary-button add-button" type="submit">予定を追加</button>
+        </form>
+        <div id="eventList" class="event-list" aria-live="polite"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <h2>画像から課題を読み取り</h2>
+            <p class="section-description">DEMO版です。課題表の画像を選ぶと、課題候補を作成します。実用版ではGemini Vision等に差し替える想定です。</p>
+          </div>
+          <span class="section-note">Demo</span>
+        </div>
+        <div class="assignment-reader">
+          <label class="assignment-upload">
+            <span>課題表の画像</span>
+            <input id="assignmentImageInput" type="file" accept="image/*">
+          </label>
+          <div class="assignment-preview-wrap">
+            <img id="assignmentPreview" class="assignment-preview" alt="選択した課題画像のプレビュー" hidden>
+            <p id="assignmentPreviewEmpty" class="empty-message">画像を選ぶとここにプレビューが表示されます。</p>
+          </div>
+          <button id="scanAssignmentButton" class="button secondary-button main-action" type="button">課題を読み取る（DEMO）</button>
+        </div>
+        <div id="scanResultList" class="scan-result-list" aria-live="polite"></div>
+      </section>
+
       <section class="actions single-action">
         <button id="generateButton" class="button primary-button main-action" type="button">計画を作成する</button>
       </section>

@@ -34,9 +34,11 @@ const state = {
     weekendMinutes: ""
   },
   subjects: [],
+  events: [],
   plan: [],
   unfinished: [],
-  aiMessages: []
+  aiMessages: [],
+  scannedAssignments: []
 };
 
 const elements = {
@@ -50,9 +52,17 @@ const elements = {
   studyAmount: document.getElementById("studyAmount"),
   studyUnit: document.getElementById("studyUnit"),
   weakness: document.getElementById("weakness"),
+  eventTitle: document.getElementById("eventTitle"),
+  eventDate: document.getElementById("eventDate"),
+  eventStart: document.getElementById("eventStart"),
+  eventEnd: document.getElementById("eventEnd"),
+  eventType: document.getElementById("eventType"),
+  eventNote: document.getElementById("eventNote"),
   subjectForm: document.getElementById("subjectForm"),
+  eventForm: document.getElementById("eventForm"),
   basicForm: document.getElementById("basicForm"),
   subjectList: document.getElementById("subjectList"),
+  eventList: document.getElementById("eventList"),
   todayTodoList: document.getElementById("todayTodoList"),
   calendarList: document.getElementById("calendarList"),
   unfinishedList: document.getElementById("unfinishedList"),
@@ -77,6 +87,11 @@ const elements = {
   aiInput: document.getElementById("aiInput"),
   aiMessages: document.getElementById("aiMessages"),
   aiSuggestions: document.querySelectorAll(".ai-suggestion"),
+  assignmentImageInput: document.getElementById("assignmentImageInput"),
+  assignmentPreview: document.getElementById("assignmentPreview"),
+  assignmentPreviewEmpty: document.getElementById("assignmentPreviewEmpty"),
+  scanAssignmentButton: document.getElementById("scanAssignmentButton"),
+  scanResultList: document.getElementById("scanResultList"),
   firebaseStatus: document.getElementById("firebaseStatus")
 };
 
@@ -98,12 +113,15 @@ function bindEvents() {
   });
 
   elements.subjectForm.addEventListener("submit", addSubject);
+  elements.eventForm.addEventListener("submit", addEvent);
   elements.generateButton.addEventListener("click", generatePlan);
   elements.redistributeButton.addEventListener("click", redistributeUnfinished);
   elements.resetButton.addEventListener("click", resetAll);
   elements.goInputButton.addEventListener("click", () => setActiveTab("input"));
   elements.goScheduleButton.addEventListener("click", () => setActiveTab("schedule"));
   elements.aiForm.addEventListener("submit", handleAIMessage);
+  elements.assignmentImageInput.addEventListener("change", handleAssignmentImageChange);
+  elements.scanAssignmentButton.addEventListener("click", scanAssignmentImageDemo);
 
   elements.aiSuggestions.forEach((button) => {
     button.addEventListener("click", () => {
@@ -221,9 +239,11 @@ function createStateSnapshot() {
   return {
     basic: state.basic,
     subjects: state.subjects,
+    events: state.events,
     plan: state.plan,
     unfinished: state.unfinished,
     aiMessages: state.aiMessages,
+    scannedAssignments: state.scannedAssignments,
     updatedAt: Date.now()
   };
 }
@@ -231,9 +251,11 @@ function createStateSnapshot() {
 function applyStateSnapshot(snapshot) {
   state.basic = { ...state.basic, ...(snapshot.basic || {}) };
   state.subjects = Array.isArray(snapshot.subjects) ? snapshot.subjects : [];
+  state.events = Array.isArray(snapshot.events) ? snapshot.events : [];
   state.plan = Array.isArray(snapshot.plan) ? snapshot.plan : [];
   state.unfinished = Array.isArray(snapshot.unfinished) ? snapshot.unfinished : [];
   state.aiMessages = Array.isArray(snapshot.aiMessages) ? snapshot.aiMessages : [];
+  state.scannedAssignments = Array.isArray(snapshot.scannedAssignments) ? snapshot.scannedAssignments : [];
 }
 
 function getLocalUpdatedAt() {
@@ -294,6 +316,37 @@ function addSubject(event) {
 
 function deleteSubject(id) {
   state.subjects = state.subjects.filter((subject) => subject.id !== id);
+  saveState();
+  renderAll();
+}
+
+function addEvent(event) {
+  event.preventDefault();
+
+  const scheduleEvent = {
+    id: createId(),
+    title: elements.eventTitle.value.trim(),
+    date: elements.eventDate.value,
+    start: elements.eventStart.value,
+    end: elements.eventEnd.value,
+    type: elements.eventType.value,
+    note: elements.eventNote.value.trim()
+  };
+
+  if (!scheduleEvent.title || !scheduleEvent.date) {
+    alert("予定名と日付を入力してください。");
+    return;
+  }
+
+  state.events.push(scheduleEvent);
+  state.events.sort((a, b) => `${a.date}${a.start || ""}`.localeCompare(`${b.date}${b.start || ""}`));
+  saveState();
+  elements.eventForm.reset();
+  renderAll();
+}
+
+function deleteEvent(id) {
+  state.events = state.events.filter((event) => event.id !== id);
   saveState();
   renderAll();
 }
@@ -567,12 +620,16 @@ function resetAll() {
     weekendMinutes: ""
   };
   state.subjects = [];
+  state.events = [];
   state.plan = [];
   state.unfinished = [];
   state.aiMessages = [];
+  state.scannedAssignments = [];
   elements.basicForm.reset();
   elements.subjectForm.reset();
+  elements.eventForm.reset();
   elements.aiForm.reset();
+  elements.assignmentImageInput.value = "";
 
   if (firebaseSync.enabled && firebaseSync.stateRef) {
     firebaseSync.stateRef.remove()
@@ -588,6 +645,8 @@ function resetAll() {
 
 function renderAll() {
   renderSubjects();
+  renderEvents();
+  renderScannedAssignments();
   renderPlan();
   renderUnfinished();
   renderStats();
@@ -600,9 +659,26 @@ function renderDashboardNext() {
   elements.dashboardNextMeta.textContent = "入力タブで計画を作成してください。";
   elements.dashboardNextItems.innerHTML = '<p class="empty-message">まだ予定がありません。</p>';
 
-  if (state.plan.length === 0) return;
-
   const today = startOfToday();
+  const nextEvent = state.events.find((event) => {
+    const date = parseDate(event.date);
+    return date && date >= today;
+  });
+
+  if (state.plan.length === 0) {
+    if (nextEvent) {
+      elements.dashboardNextTitle.textContent = "次の予定";
+      elements.dashboardNextMeta.textContent = formatEventDate(nextEvent);
+      elements.dashboardNextItems.innerHTML = `
+        <ul>
+          <li>${escapeHTML(nextEvent.type)}：${escapeHTML(nextEvent.title)}</li>
+          ${nextEvent.note ? `<li>${escapeHTML(nextEvent.note)}</li>` : ""}
+        </ul>
+      `;
+    }
+    return;
+  }
+
   const nextPlan = state.plan.find((day) => {
     const date = parseDate(day.date);
     return date >= today && day.status !== "done";
@@ -615,13 +691,17 @@ function renderDashboardNext() {
   }
 
   const date = parseDate(nextPlan.date);
+  const dayEvents = getEventsForDate(nextPlan.date);
   elements.dashboardNextTitle.textContent = isSameDate(date, today) ? "今日の予定" : "次の予定";
   elements.dashboardNextMeta.textContent = `${formatDateShort(date)} ${getWeekday(date)} / 予定 ${nextPlan.plannedMinutes}分`;
 
   const items = nextPlan.items.length > 0
     ? nextPlan.items.map((item) => `<li>${escapeHTML(item.text)}</li>`).join("")
     : "<li>暗記・ノート整理・前回の続き</li>";
-  elements.dashboardNextItems.innerHTML = `<ul>${items}</ul>`;
+  const eventItems = dayEvents.map((event) => {
+    return `<li>予定：${escapeHTML(event.title)}${event.start ? ` ${escapeHTML(formatEventTime(event))}` : ""}</li>`;
+  }).join("");
+  elements.dashboardNextItems.innerHTML = `<ul>${eventItems}${items}</ul>`;
 }
 
 function renderSubjects() {
@@ -652,13 +732,197 @@ function renderSubjects() {
   });
 }
 
+function renderEvents() {
+  elements.eventList.innerHTML = "";
+
+  if (state.events.length === 0) {
+    elements.eventList.innerHTML = '<p class="empty-message">まだ部活や予定は追加されていません。</p>';
+    return;
+  }
+
+  state.events.forEach((event) => {
+    const item = document.createElement("article");
+    item.className = "event-card";
+    item.innerHTML = `
+      <div class="card-top">
+        <div>
+          <h3>${escapeHTML(event.title)}</h3>
+          <span class="badge">${escapeHTML(event.type)}</span>
+        </div>
+        <button class="button danger-button small-button" type="button">削除</button>
+      </div>
+      <p class="event-meta">${escapeHTML(formatEventDate(event))}</p>
+      ${event.note ? `<p class="event-note">${escapeHTML(event.note)}</p>` : ""}
+    `;
+
+    item.querySelector("button").addEventListener("click", () => deleteEvent(event.id));
+    elements.eventList.appendChild(item);
+  });
+}
+
+function getEventsForDate(dateKey) {
+  return state.events.filter((event) => event.date === dateKey);
+}
+
+function formatEventDate(event) {
+  const date = parseDate(event.date);
+  const dateText = date ? `${formatDateShort(date)} ${getWeekday(date)}` : event.date;
+  return `${dateText} / ${formatEventTime(event)}`;
+}
+
+function formatEventTime(event) {
+  if (event.start && event.end) return `${event.start}〜${event.end}`;
+  if (event.start) return `${event.start}〜`;
+  if (event.end) return `〜${event.end}`;
+  return "時間未定";
+}
+
+function createPlanEventsHTML(events) {
+  if (events.length === 0) return "";
+
+  const items = events.map((event) => {
+    const note = event.note ? ` / ${escapeHTML(event.note)}` : "";
+    return `<li><strong>${escapeHTML(event.type)}</strong>：${escapeHTML(event.title)} ${escapeHTML(formatEventTime(event))}${note}</li>`;
+  }).join("");
+
+  return `
+    <div class="plan-events">
+      <span class="plan-events-title">この日の予定</span>
+      <ul>${items}</ul>
+    </div>
+  `;
+}
+
+function createEventOnlyCardHTML(date, events) {
+  return `
+    <article class="plan-card today event-only-card">
+      <div class="plan-head">
+        <div>
+          <h3>${formatDateShort(date)}</h3>
+          <div class="date-line">${getWeekday(date)}</div>
+        </div>
+        <div class="time-line">予定あり</div>
+      </div>
+      ${createPlanEventsHTML(events)}
+    </article>
+  `;
+}
+
+function handleAssignmentImageChange() {
+  const file = elements.assignmentImageInput.files[0];
+  if (!file) {
+    elements.assignmentPreview.hidden = true;
+    elements.assignmentPreview.removeAttribute("src");
+    elements.assignmentPreviewEmpty.hidden = false;
+    return;
+  }
+
+  elements.assignmentPreview.src = URL.createObjectURL(file);
+  elements.assignmentPreview.hidden = false;
+  elements.assignmentPreviewEmpty.hidden = true;
+}
+
+function scanAssignmentImageDemo() {
+  const file = elements.assignmentImageInput.files[0];
+  if (!file) {
+    alert("課題表の画像を選択してください。");
+    return;
+  }
+
+  state.scannedAssignments = createDemoAssignmentsFromImageName(file.name);
+  saveState();
+  renderScannedAssignments();
+}
+
+function createDemoAssignmentsFromImageName(fileName) {
+  const lowerName = fileName.toLowerCase();
+  const candidates = [];
+
+  if (includesAny(lowerName, ["math", "数学", "sugaku"])) {
+    candidates.push(createScannedAssignment("数学", "画像内の数学課題", 12, "問", "普通"));
+  }
+
+  if (includesAny(lowerName, ["english", "英語", "eigo"])) {
+    candidates.push(createScannedAssignment("英語", "画像内の英語課題", 30, "個", "普通"));
+  }
+
+  if (includesAny(lowerName, ["science", "理科", "rika"])) {
+    candidates.push(createScannedAssignment("理科", "画像内の理科課題", 2, "章", "普通"));
+  }
+
+  if (includesAny(lowerName, ["social", "社会", "shakai"])) {
+    candidates.push(createScannedAssignment("社会", "画像内の社会課題", 8, "ページ", "普通"));
+  }
+
+  if (candidates.length > 0) return candidates;
+
+  return [
+    createScannedAssignment("数学", "課題表から読み取り候補：ワーク", 10, "問", "普通"),
+    createScannedAssignment("英語", "課題表から読み取り候補：単語・本文", 20, "個", "普通"),
+    createScannedAssignment("理科", "課題表から読み取り候補：暗記範囲", 1, "章", "普通")
+  ];
+}
+
+function createScannedAssignment(subjectName, range, amount, unit, weakness) {
+  return {
+    id: createId(),
+    subjectName,
+    range,
+    amount,
+    unit,
+    weakness
+  };
+}
+
+function renderScannedAssignments() {
+  elements.scanResultList.innerHTML = "";
+
+  if (state.scannedAssignments.length === 0) {
+    elements.scanResultList.innerHTML = '<p class="empty-message">読み取り結果はまだありません。</p>';
+    return;
+  }
+
+  state.scannedAssignments.forEach((assignment) => {
+    const card = document.createElement("article");
+    card.className = "scan-result-card";
+    card.innerHTML = `
+      <div>
+        <h3>${escapeHTML(assignment.subjectName)}</h3>
+        <p class="event-meta">${escapeHTML(assignment.range)} / ${assignment.amount}${escapeHTML(assignment.unit)}</p>
+      </div>
+      <button class="button secondary-button small-button" type="button">教科に追加</button>
+    `;
+
+    card.querySelector("button").addEventListener("click", () => addScannedAssignmentToSubjects(assignment.id));
+    elements.scanResultList.appendChild(card);
+  });
+}
+
+function addScannedAssignmentToSubjects(id) {
+  const assignment = state.scannedAssignments.find((item) => item.id === id);
+  if (!assignment) return;
+
+  state.subjects.push({
+    id: createId(),
+    name: assignment.subjectName,
+    range: assignment.range,
+    amount: Number(assignment.amount),
+    unit: assignment.unit,
+    weakness: assignment.weakness
+  });
+
+  state.scannedAssignments = state.scannedAssignments.filter((item) => item.id !== id);
+  saveState();
+  renderAll();
+}
+
 function renderPlan() {
   elements.todayTodoList.innerHTML = "";
   elements.calendarList.innerHTML = "";
   elements.planName.textContent = state.basic.testName ? state.basic.testName : "";
   elements.calendarTitle.textContent = "";
 
-  if (state.plan.length === 0) {
+  if (state.plan.length === 0 && state.events.length === 0) {
     elements.todayTodoList.innerHTML = '<p class="empty-message">入力（+）タブで基本情報と教科を入力して、計画を作成してください。</p>';
     elements.calendarList.innerHTML = '<p class="empty-message">計画を作成すると、ここにカレンダー形式で表示されます。</p>';
     return;
@@ -671,8 +935,14 @@ function renderPlan() {
 
 function renderTodayTodo(today) {
   const todayPlan = state.plan.find((day) => isSameDate(parseDate(day.date), today));
+  const todayEvents = getEventsForDate(toISODate(today));
 
   if (!todayPlan) {
+    if (todayEvents.length > 0) {
+      elements.todayTodoList.innerHTML = createEventOnlyCardHTML(today, todayEvents);
+      return;
+    }
+
     elements.todayTodoList.innerHTML = '<p class="empty-message">今日の予定はありません。</p>';
     return;
   }
@@ -714,6 +984,7 @@ function renderCalendarSchedule(today) {
 
 function createPlanCard(day, today, compact) {
   const date = parseDate(day.date);
+  const dayEvents = getEventsForDate(day.date);
   const card = document.createElement("article");
   card.className = [
     "plan-card",
@@ -725,6 +996,7 @@ function createPlanCard(day, today, compact) {
   const items = day.items.length > 0
     ? day.items.map((item) => `<li>${escapeHTML(item.text)}</li>`).join("")
     : "<li>暗記・ノート整理・前回の続き</li>";
+  const eventBlock = createPlanEventsHTML(dayEvents);
 
   card.innerHTML = `
     <div class="plan-head">
@@ -734,6 +1006,7 @@ function createPlanCard(day, today, compact) {
       </div>
       <div class="time-line">予定 ${day.plannedMinutes}分</div>
     </div>
+    ${eventBlock}
     <ul class="study-items">${items}</ul>
     <div class="plan-actions">
       <button class="button complete-button small-button" type="button">完了</button>
@@ -748,7 +1021,10 @@ function createPlanCard(day, today, compact) {
 }
 
 function getMonthsInPlan() {
-  const monthKeys = new Set(state.plan.map((day) => day.date.slice(0, 7)));
+  const monthKeys = new Set([
+    ...state.plan.map((day) => day.date.slice(0, 7)),
+    ...state.events.map((event) => event.date.slice(0, 7))
+  ].filter(Boolean));
   return Array.from(monthKeys).sort().map((key) => {
     const [year, month] = key.split("-").map(Number);
     return new Date(year, month - 1, 1);
@@ -772,16 +1048,18 @@ function createCalendarCells(monthDate, planByDate, today) {
     const date = new Date(year, month, dateNumber);
     const isoDate = toISODate(date);
     const day = planByDate.get(isoDate);
+    const dayEvents = getEventsForDate(isoDate);
     const cell = document.createElement("article");
     cell.className = [
       "calendar-cell",
       day ? "has-plan" : "",
+      dayEvents.length > 0 ? "has-event" : "",
       day && day.status === "done" ? "done" : "",
       day && day.status === "missed" ? "missed" : "",
       isSameDate(date, today) ? "today" : ""
     ].filter(Boolean).join(" ");
 
-    cell.innerHTML = createCalendarCellHTML(date, day);
+    cell.innerHTML = createCalendarCellHTML(date, day, dayEvents);
 
     if (day) {
       const [completeButton, missedButton] = cell.querySelectorAll("button");
@@ -795,9 +1073,19 @@ function createCalendarCells(monthDate, planByDate, today) {
   return cells;
 }
 
-function createCalendarCellHTML(date, day) {
+function createCalendarCellHTML(date, day, dayEvents) {
+  const eventItems = dayEvents.map((event) => {
+    return `<li>${escapeHTML(shortenText(event.title, 18))}${event.start ? ` ${escapeHTML(event.start)}` : ""}</li>`;
+  }).join("");
+  const eventBlock = eventItems ? `<ul class="calendar-events">${eventItems}</ul>` : "";
+
   if (!day) {
-    return `<div class="calendar-date">${date.getDate()}</div>`;
+    return `
+      <div class="calendar-cell-head">
+        <span class="calendar-date">${date.getDate()}</span>
+      </div>
+      ${eventBlock}
+    `;
   }
 
   const previewItems = day.items.slice(0, 2).map((item) => {
@@ -812,6 +1100,7 @@ function createCalendarCellHTML(date, day) {
       <span class="calendar-time">${day.plannedMinutes}分</span>
     </div>
     ${statusLabel ? `<div class="calendar-status">${statusLabel}</div>` : ""}
+    ${eventBlock}
     <ul class="calendar-items">${previewItems}${remaining}</ul>
     <div class="calendar-actions">
       <button class="calendar-action complete" type="button" aria-label="${formatDateShort(date)}を完了">完了</button>
@@ -955,7 +1244,15 @@ function includesAny(text, keywords) {
 function getMinutesForDate(date) {
   const day = date.getDay();
   const isWeekend = day === 0 || day === 6;
-  return Number(isWeekend ? state.basic.weekendMinutes : state.basic.weekdayMinutes);
+  const baseMinutes = Number(isWeekend ? state.basic.weekendMinutes : state.basic.weekdayMinutes);
+  const hasEvent = getEventsForDate(toISODate(date)).length > 0;
+
+  // 部活や予定がある日は、入力された勉強時間の6割くらいにして無理を減らす。
+  if (hasEvent) {
+    return Math.max(30, Math.round(baseMinutes * 0.6));
+  }
+
+  return baseMinutes;
 }
 
 function getDateRange(startDate, endDate) {

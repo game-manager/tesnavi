@@ -300,6 +300,8 @@ h2 {
 .panel,
 .plan-card,
 .subject-card,
+.event-card,
+.scan-result-card,
 .unfinished-item {
   background: var(--card);
   border: 1px solid var(--line);
@@ -387,13 +389,19 @@ h2 {
 }
 
 .form-grid,
-.subject-form {
+.subject-form,
+.event-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
 .subject-form {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: end;
+}
+
+.event-form {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   align-items: end;
 }
@@ -503,16 +511,32 @@ select:focus {
   font-size: 1.02rem;
 }
 
-.subject-list {
+.subject-list,
+.event-list,
+.scan-result-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-top: 18px;
 }
 
-.subject-card {
+.subject-card,
+.event-card,
+.scan-result-card {
   padding: 18px;
   border-left: 5px solid var(--blue-600);
+}
+
+.event-card {
+  border-left-color: var(--green-600);
+}
+
+.scan-result-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  border-left-color: var(--yellow-600);
 }
 
 .card-top {
@@ -523,6 +547,8 @@ select:focus {
 }
 
 .subject-card h3,
+.event-card h3,
+.scan-result-card h3,
 .plan-card h3 {
   margin: 0;
   font-size: 1.08rem;
@@ -543,9 +569,16 @@ select:focus {
   white-space: nowrap;
 }
 
-.subject-meta {
+.subject-meta,
+.event-meta {
   margin: 12px 0 0;
   color: var(--muted);
+}
+
+.event-note {
+  margin: 8px 0 0;
+  color: #344054;
+  font-weight: 700;
 }
 
 .small-button {
@@ -631,6 +664,32 @@ select:focus {
   margin-top: 6px;
 }
 
+.plan-events {
+  margin-top: 14px;
+  padding: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+}
+
+.plan-events-title {
+  display: block;
+  color: var(--green-600);
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.plan-events ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #166534;
+  font-size: 0.92rem;
+}
+
+.event-only-card {
+  border-left-color: var(--green-600);
+}
+
 .plan-actions {
   display: flex;
   flex-wrap: wrap;
@@ -708,6 +767,11 @@ select:focus {
   border-top: 4px solid #bfdbfe;
 }
 
+.calendar-cell.has-event:not(.has-plan) {
+  background: #f7fff9;
+  border-top: 4px solid #86efac;
+}
+
 .calendar-cell.today {
   border-color: var(--blue-600);
   box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.12);
@@ -773,6 +837,26 @@ select:focus {
 
 .calendar-items li + li {
   margin-top: 4px;
+}
+
+.calendar-events {
+  margin: 8px 0 0;
+  padding-left: 0;
+  display: grid;
+  gap: 4px;
+  list-style: none;
+}
+
+.calendar-events li {
+  padding: 3px 6px;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .calendar-actions {
@@ -910,6 +994,38 @@ select:focus {
   min-height: 96px;
 }
 
+.assignment-reader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.assignment-upload {
+  min-width: 0;
+}
+
+.assignment-preview-wrap {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: #f8fbff;
+  border: 1px dashed #b7c7dc;
+  border-radius: 8px;
+}
+
+.assignment-preview {
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.assignment-reader .main-action {
+  grid-column: 1 / -1;
+}
+
 .empty-message {
   margin: 0;
   color: var(--muted);
@@ -921,12 +1037,16 @@ select:focus {
   .dashboard-hero,
   .form-grid,
   .subject-list,
+  .event-list,
+  .scan-result-list,
+  .assignment-reader,
   .ai-form,
   .actions {
     grid-template-columns: 1fr;
   }
 
-  .subject-form {
+  .subject-form,
+  .event-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1007,7 +1127,8 @@ select:focus {
     padding: 16px;
   }
 
-  .subject-form {
+  .subject-form,
+  .event-form {
     grid-template-columns: 1fr;
   }
 
@@ -1047,6 +1168,10 @@ select:focus {
 
   .tab-panel .button {
     width: 100%;
+  }
+
+  .scan-result-card {
+    flex-direction: column;
   }
 
   .ai-messages {
