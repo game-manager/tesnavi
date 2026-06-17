@@ -6,6 +6,7 @@ const DEVICE_ID_KEY = "tesnavi-device-id";
 const LEGACY_DEVICE_ID_KEY = `${LEGACY_APP_STORAGE_ROOT}-device-id`;
 const CONTACT_DRAFTS_KEY = "tesnavi-contact-drafts";
 const LEGACY_CONTACT_DRAFTS_KEY = `${LEGACY_APP_STORAGE_ROOT}-contact-drafts`;
+const TUTORIAL_SEEN_KEY = "tesnavi-tutorial-seen";
 const RECAPTCHA_SITE_KEY = "6LdB3CEtAAAAACpt-mWbKil76U66ok5MhI_M23LJ";
 
 const firebaseConfig = {
@@ -68,11 +69,67 @@ const state = {
     bestTaskStreak: 0
   },
   profile: {
-    username: ""
+    username: "",
+    rankingOptIn: false
   }
 };
 
 let editingSubjectId = null;
+let editingEventId = null;
+let currentEventMode = "single";
+let tutorialOpen = false;
+let tutorialStepIndex = 0;
+
+const tutorialSteps = [
+  {
+    title: "テスナビへようこそ",
+    body: "テスト日と範囲を入れるだけで、毎日の勉強計画を作れます。まずは使い方をかんたんに確認しましょう。",
+    tab: "dashboard",
+    target: ".dashboard-hero"
+  },
+  {
+    title: "まずは基本情報を入力",
+    body: "入力タブで、テスト名・計画開始日・テスト開始日・平日と休日の勉強時間を入力します。",
+    tab: "input",
+    target: "#basicForm"
+  },
+  {
+    title: "教科と範囲を追加",
+    body: "数学や英語などの教科名、テスト範囲、勉強量、苦手度を追加します。苦手な教科は少し多めに計画へ入ります。",
+    tab: "input",
+    target: "#subjectForm"
+  },
+  {
+    title: "部活や予定も入れられる",
+    body: "部活や習い事がある日を入れると、その日は少し軽めの計画になります。毎週ある予定は、曜日を選んでまとめて登録できます。",
+    tab: "input",
+    target: "#eventForm"
+  },
+  {
+    title: "計画を作成",
+    body: "入力が終わったら「計画を作成する」ボタンを押します。テスト前日までの日別予定が自動で作られます。",
+    tab: "input",
+    target: "#generateButton"
+  },
+  {
+    title: "今日やることを確認",
+    body: "計画タブでは、今日のTodoと今日以降の予定を確認できます。毎日ここを見れば、何をやるか迷いません。",
+    tab: "schedule",
+    target: ".plan-panel"
+  },
+  {
+    title: "進み具合を記録",
+    body: "勉強できた日は「完了」、できなかった日は「できなかった」を押します。未完了分はあとで再配分できます。",
+    tab: "schedule",
+    target: ".day-list-panel"
+  },
+  {
+    title: "準備完了",
+    body: "これで使い方はOKです。まずは入力タブからテスト情報を入れてみましょう。",
+    tab: "input",
+    target: "#basicForm"
+  }
+];
 
 const elements = {
   testName: document.getElementById("testName"),
@@ -91,6 +148,12 @@ const elements = {
   eventEnd: document.getElementById("eventEnd"),
   eventType: document.getElementById("eventType"),
   eventNote: document.getElementById("eventNote"),
+  eventModeButtons: document.querySelectorAll(".event-mode-button"),
+  eventDateField: document.getElementById("eventDateField"),
+  repeatWeekdayField: document.getElementById("repeatWeekdayField"),
+  weekdayButtons: document.querySelectorAll(".weekday-button"),
+  repeatEndField: document.getElementById("repeatEndField"),
+  repeatEndDate: document.getElementById("repeatEndDate"),
   subjectForm: document.getElementById("subjectForm"),
   eventForm: document.getElementById("eventForm"),
   basicForm: document.getElementById("basicForm"),
@@ -163,7 +226,17 @@ const elements = {
   contactName: document.getElementById("contactName"),
   contactEmail: document.getElementById("contactEmail"),
   contactMessage: document.getElementById("contactMessage"),
-  contactMessageStatus: document.getElementById("contactMessageStatus")
+  contactMessageStatus: document.getElementById("contactMessageStatus"),
+  rankingOptIn: document.getElementById("rankingOptIn"),
+  tutorialOverlay: document.getElementById("tutorialOverlay"),
+  tutorialTitle: document.getElementById("tutorialTitle"),
+  tutorialBody: document.getElementById("tutorialBody"),
+  tutorialStepText: document.getElementById("tutorialStepText"),
+  tutorialProgressBar: document.getElementById("tutorialProgressBar"),
+  tutorialBackButton: document.getElementById("tutorialBackButton"),
+  tutorialNextButton: document.getElementById("tutorialNextButton"),
+  tutorialSkipButton: document.getElementById("tutorialSkipButton"),
+  tutorialReplayButton: document.getElementById("tutorialReplayButton")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -172,6 +245,7 @@ document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   fillBasicForm();
   renderAll();
+  maybeShowInitialTutorial();
 });
 
 function bindEvents() {
@@ -201,6 +275,22 @@ function bindEvents() {
   elements.syncCheckButton.addEventListener("click", checkAccountSync);
   elements.accountUpdateForm.addEventListener("submit", updateAccountInfo);
   elements.contactForm.addEventListener("submit", submitContact);
+  elements.tutorialReplayButton.addEventListener("click", () => showTutorial(true));
+  elements.tutorialBackButton.addEventListener("click", previousTutorialStep);
+  elements.tutorialNextButton.addEventListener("click", nextTutorialStep);
+  elements.tutorialSkipButton.addEventListener("click", finishTutorial);
+  elements.rankingOptIn.addEventListener("change", handleRankingOptInChange);
+
+  elements.eventModeButtons.forEach((button) => {
+    button.addEventListener("click", () => setEventMode(button.dataset.eventMode));
+  });
+
+  elements.weekdayButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      button.classList.toggle("active");
+      button.setAttribute("aria-pressed", String(button.classList.contains("active")));
+    });
+  });
 
   elements.aiSuggestions.forEach((button) => {
     button.addEventListener("click", () => {
@@ -225,6 +315,71 @@ function setActiveTab(tabName) {
     const isActive = panel.dataset.panel === tabName;
     panel.classList.toggle("active", isActive);
     panel.hidden = !isActive;
+  });
+}
+
+function maybeShowInitialTutorial() {
+  if (localStorage.getItem(TUTORIAL_SEEN_KEY)) return;
+  window.setTimeout(() => showTutorial(false), 450);
+}
+
+function showTutorial(force) {
+  if (tutorialOpen) return;
+  if (!force && localStorage.getItem(TUTORIAL_SEEN_KEY)) return;
+  tutorialOpen = true;
+  tutorialStepIndex = 0;
+  elements.tutorialOverlay.hidden = false;
+  document.body.classList.add("tutorial-active");
+  renderTutorialStep();
+}
+
+function renderTutorialStep() {
+  const step = tutorialSteps[tutorialStepIndex];
+  if (!step) return;
+
+  setActiveTab(step.tab);
+  clearTutorialHighlight();
+  elements.tutorialTitle.textContent = step.title;
+  elements.tutorialBody.textContent = step.body;
+  elements.tutorialStepText.textContent = `${tutorialStepIndex + 1} / ${tutorialSteps.length}`;
+  elements.tutorialProgressBar.style.width = `${((tutorialStepIndex + 1) / tutorialSteps.length) * 100}%`;
+  elements.tutorialBackButton.disabled = tutorialStepIndex === 0;
+  elements.tutorialNextButton.textContent = tutorialStepIndex === tutorialSteps.length - 1 ? "始める" : "次へ";
+
+  const target = document.querySelector(step.target);
+  if (target) {
+    target.classList.add("tutorial-highlight");
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+function nextTutorialStep() {
+  if (tutorialStepIndex >= tutorialSteps.length - 1) {
+    finishTutorial();
+    return;
+  }
+  tutorialStepIndex += 1;
+  renderTutorialStep();
+}
+
+function previousTutorialStep() {
+  if (tutorialStepIndex === 0) return;
+  tutorialStepIndex -= 1;
+  renderTutorialStep();
+}
+
+function finishTutorial() {
+  localStorage.setItem(TUTORIAL_SEEN_KEY, "true");
+  tutorialOpen = false;
+  elements.tutorialOverlay.hidden = true;
+  document.body.classList.remove("tutorial-active");
+  clearTutorialHighlight();
+  setActiveTab("input");
+}
+
+function clearTutorialHighlight() {
+  document.querySelectorAll(".tutorial-highlight").forEach((element) => {
+    element.classList.remove("tutorial-highlight");
   });
 }
 
@@ -518,7 +673,7 @@ function createStateSnapshot() {
 function applyStateSnapshot(snapshot) {
   state.basic = { ...state.basic, ...(snapshot.basic || {}) };
   state.subjects = Array.isArray(snapshot.subjects) ? snapshot.subjects : [];
-  state.events = Array.isArray(snapshot.events) ? snapshot.events : [];
+  state.events = Array.isArray(snapshot.events) ? snapshot.events.map(normalizeEvent).filter(Boolean) : [];
   state.plan = Array.isArray(snapshot.plan) ? snapshot.plan : [];
   state.unfinished = Array.isArray(snapshot.unfinished) ? snapshot.unfinished : [];
   state.aiMessages = Array.isArray(snapshot.aiMessages) ? snapshot.aiMessages : [];
@@ -537,7 +692,25 @@ function normalizeAchievement(value) {
 
 function normalizeProfile(value) {
   return {
-    username: String(value && value.username ? value.username : "").trim()
+    username: String(value && value.username ? value.username : "").trim(),
+    rankingOptIn: Boolean(value && value.rankingOptIn)
+  };
+}
+
+function normalizeEvent(event) {
+  if (!event || !event.title) return null;
+  const isRepeating = Boolean(event.isRepeating);
+  return {
+    id: event.id || createId(),
+    title: String(event.title || "").trim(),
+    date: isRepeating ? "" : String(event.date || ""),
+    start: String(event.start || ""),
+    end: String(event.end || ""),
+    type: String(event.type || "予定"),
+    note: String(event.note || ""),
+    isRepeating,
+    weekdays: Array.isArray(event.weekdays) ? event.weekdays.map(Number).filter((day) => day >= 0 && day <= 6) : [],
+    repeatEndDate: String(event.repeatEndDate || "")
   };
 }
 
@@ -600,7 +773,7 @@ function setSyncDebug(title, description, path, type) {
   if (!elements.syncDebugTitle) return;
   elements.syncDebugTitle.textContent = title;
   elements.syncDebugDescription.textContent = description;
-  elements.syncDebugPath.textContent = `保存先: ${path || "未確認"}`;
+  elements.syncDebugPath.textContent = `詳細: ${path || "未確認"}`;
   elements.syncDebugTitle.className = `sync-debug-title ${type || ""}`.trim();
 }
 
@@ -743,32 +916,133 @@ function setSubjectFormMode(isEditing) {
 function addEvent(event) {
   event.preventDefault();
 
+  const selectedWeekdays = getSelectedWeekdays();
   const scheduleEvent = {
-    id: createId(),
+    id: editingEventId || createId(),
     title: elements.eventTitle.value.trim(),
-    date: elements.eventDate.value,
+    date: currentEventMode === "single" ? elements.eventDate.value : "",
     start: elements.eventStart.value,
     end: elements.eventEnd.value,
     type: elements.eventType.value,
-    note: elements.eventNote.value.trim()
+    note: elements.eventNote.value.trim(),
+    isRepeating: currentEventMode === "repeat",
+    weekdays: currentEventMode === "repeat" ? selectedWeekdays : [],
+    repeatEndDate: currentEventMode === "repeat" ? elements.repeatEndDate.value : ""
   };
 
-  if (!scheduleEvent.title || !scheduleEvent.date) {
-    alert("予定名と日付を入力してください。");
+  if (!scheduleEvent.title) {
+    alert("予定名を入力してください。");
     return;
   }
 
-  state.events.push(scheduleEvent);
-  state.events.sort((a, b) => `${a.date}${a.start || ""}`.localeCompare(`${b.date}${b.start || ""}`));
+  if (scheduleEvent.isRepeating) {
+    if (selectedWeekdays.length === 0) {
+      alert("繰り返す曜日を1つ以上選んでください。");
+      return;
+    }
+    if (!state.basic.startDate || !state.basic.testDate) {
+      alert("繰り返し予定を使うには、先に計画開始日とテスト開始日を入力してください。");
+      return;
+    }
+  } else if (!scheduleEvent.date) {
+    alert("日付を入力してください。");
+    return;
+  }
+
+  if (editingEventId) {
+    state.events = state.events.map((item) => item.id === editingEventId ? scheduleEvent : item);
+  } else {
+    state.events.push(scheduleEvent);
+  }
+
+  sortEvents();
   saveState();
-  elements.eventForm.reset();
+  resetEventForm();
   renderAll();
 }
 
+function editEvent(id) {
+  const event = state.events.find((item) => item.id === id);
+  if (!event) return;
+
+  editingEventId = id;
+  setEventMode(event.isRepeating ? "repeat" : "single");
+  elements.eventTitle.value = event.title;
+  elements.eventDate.value = event.date || "";
+  elements.eventStart.value = event.start || "";
+  elements.eventEnd.value = event.end || "";
+  elements.eventType.value = event.type || "予定";
+  elements.eventNote.value = event.note || "";
+  elements.repeatEndDate.value = event.repeatEndDate || "";
+  setSelectedWeekdays(event.weekdays || []);
+  setEventFormMode(true);
+  setActiveTab("input");
+  elements.eventTitle.focus();
+  elements.eventForm.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 function deleteEvent(id) {
+  const target = state.events.find((event) => event.id === id);
+  if (!target) return;
+  if (target.isRepeating && !confirm("この繰り返し予定を削除しますか？")) return;
+
   state.events = state.events.filter((event) => event.id !== id);
+  if (editingEventId === id) {
+    editingEventId = null;
+    resetEventForm();
+  }
   saveState();
   renderAll();
+}
+
+function setEventMode(mode) {
+  currentEventMode = mode === "repeat" ? "repeat" : "single";
+  const isRepeat = currentEventMode === "repeat";
+  elements.eventModeButtons.forEach((button) => {
+    const isActive = button.dataset.eventMode === currentEventMode;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+  elements.eventDateField.hidden = isRepeat;
+  elements.repeatWeekdayField.hidden = !isRepeat;
+  elements.repeatEndField.hidden = !isRepeat;
+}
+
+function getSelectedWeekdays() {
+  return Array.from(elements.weekdayButtons)
+    .filter((button) => button.classList.contains("active"))
+    .map((button) => Number(button.dataset.weekday));
+}
+
+function setSelectedWeekdays(weekdays) {
+  const selected = new Set((weekdays || []).map(Number));
+  elements.weekdayButtons.forEach((button) => {
+    const isActive = selected.has(Number(button.dataset.weekday));
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function resetEventForm() {
+  editingEventId = null;
+  elements.eventForm.reset();
+  setSelectedWeekdays([]);
+  setEventMode("single");
+  setEventFormMode(false);
+}
+
+function setEventFormMode(isEditing) {
+  const submitButton = elements.eventForm.querySelector('button[type="submit"]');
+  if (!submitButton) return;
+  submitButton.textContent = isEditing ? "変更を保存" : "予定を追加";
+}
+
+function sortEvents() {
+  state.events.sort((a, b) => {
+    const aKey = a.isRepeating ? `9999-${(a.weekdays || []).join("")}${a.start || ""}` : `${a.date}${a.start || ""}`;
+    const bKey = b.isRepeating ? `9999-${(b.weekdays || []).join("")}${b.start || ""}` : `${b.date}${b.start || ""}`;
+    return aKey.localeCompare(bKey);
+  });
 }
 
 function validateBeforeGenerate() {
@@ -1078,7 +1352,7 @@ function resetAll() {
   editingSubjectId = null;
   elements.basicForm.reset();
   resetSubjectForm();
-  elements.eventForm.reset();
+  resetEventForm();
   elements.aiForm.reset();
   elements.assignmentImageInput.value = "";
 
@@ -1111,11 +1385,14 @@ function renderAll() {
 function renderRanking() {
   if (!elements.rankingList) return;
 
-  const rankings = accountState.rankings || [];
+  const currentUid = accountState.user && accountState.user.uid;
+  const rankings = (accountState.rankings || []).filter((entry) => {
+    return entry.uid !== currentUid || state.profile.rankingOptIn;
+  });
   elements.rankingStatus.textContent = rankings.length > 0 ? `${rankings.length}人` : "未登録";
 
   if (rankings.length === 0) {
-    elements.rankingList.innerHTML = '<p class="empty-message">まだランキング参加者がいません。ログインしてタスクを完了すると表示されます。</p>';
+    elements.rankingList.innerHTML = '<p class="empty-message">まだ参加者はいません。設定タブで参加すると、ユーザー名と達成数が表示されます。</p>';
     return;
   }
 
@@ -1139,6 +1416,10 @@ function renderRanking() {
 
 function updateRankingEntry() {
   if (!firebaseSync.database || !accountState.user) return;
+  if (!state.profile.rankingOptIn) {
+    removeRankingEntry();
+    return;
+  }
 
   const username = getRankingUsername();
   const entry = {
@@ -1153,6 +1434,25 @@ function updateRankingEntry() {
       console.warn("ランキングの更新に失敗しました。", error);
       elements.rankingStatus.textContent = "準備中";
     });
+}
+
+function removeRankingEntry() {
+  if (!firebaseSync.database || !accountState.user) return;
+  [APP_STORAGE_ROOT, LEGACY_APP_STORAGE_ROOT].forEach((root) => {
+    firebaseSync.database.ref(`${root}/rankings/${accountState.user.uid}`).remove()
+      .catch((error) => console.warn("ランキングからの削除に失敗しました。", error));
+  });
+}
+
+function handleRankingOptInChange() {
+  state.profile.rankingOptIn = Boolean(elements.rankingOptIn.checked);
+  saveState();
+  if (state.profile.rankingOptIn) {
+    updateRankingEntry();
+  } else {
+    removeRankingEntry();
+  }
+  renderRanking();
 }
 
 function getRankingUsername() {
@@ -1278,25 +1578,88 @@ function renderEvents() {
           <h3>${escapeHTML(event.title)}</h3>
           <span class="badge">${escapeHTML(event.type)}</span>
         </div>
-        <button class="button danger-button small-button" type="button">削除</button>
+        <div class="card-actions">
+          <button class="button secondary-button small-button" type="button" data-action="edit">編集</button>
+          <button class="button danger-button small-button" type="button" data-action="delete">削除</button>
+        </div>
       </div>
       <p class="event-meta">${escapeHTML(formatEventDate(event))}</p>
       ${event.note ? `<p class="event-note">${escapeHTML(event.note)}</p>` : ""}
     `;
 
-    item.querySelector("button").addEventListener("click", () => deleteEvent(event.id));
+    item.querySelector('[data-action="edit"]').addEventListener("click", () => editEvent(event.id));
+    item.querySelector('[data-action="delete"]').addEventListener("click", () => deleteEvent(event.id));
     elements.eventList.appendChild(item);
   });
 }
 
 function getEventsForDate(dateKey) {
-  return state.events.filter((event) => event.date === dateKey);
+  const date = parseDate(dateKey);
+  if (!date) return [];
+  return state.events.filter((event) => {
+    if (event.isRepeating) return isRecurringEventOnDate(event, date);
+    return event.date === dateKey;
+  });
 }
 
 function formatEventDate(event) {
+  if (event.isRepeating) {
+    const end = parseDate(event.repeatEndDate);
+    return `毎週 ${formatWeekdays(event.weekdays)} ${formatEventTime(event)}${end ? ` / ${formatDateShort(end)}まで` : ""}`;
+  }
   const date = parseDate(event.date);
   const dateText = date ? `${formatDateShort(date)} ${getWeekday(date)}` : event.date;
-  return `${dateText} / ${formatEventTime(event)}`;
+  return `1回のみ ${dateText} ${formatEventTime(event)}`;
+}
+
+function formatWeekdays(weekdays) {
+  const labels = ["日", "月", "火", "水", "木", "金", "土"];
+  return (weekdays || [])
+    .map(Number)
+    .sort((a, b) => {
+      const order = [1, 2, 3, 4, 5, 6, 0];
+      return order.indexOf(a) - order.indexOf(b);
+    })
+    .map((day) => labels[day])
+    .join("・");
+}
+
+function isRecurringEventOnDate(event, date) {
+  const start = parseDate(state.basic.startDate);
+  if (!start || date < start) return false;
+
+  const end = getRecurringEndDate(event);
+  if (end && date > end) return false;
+  return (event.weekdays || []).map(Number).includes(date.getDay());
+}
+
+function getRecurringEndDate(event) {
+  if (event.repeatEndDate) return parseDate(event.repeatEndDate);
+  if (state.basic.testDate) {
+    const testDate = parseDate(state.basic.testDate);
+    return testDate ? addDays(testDate, -1) : null;
+  }
+  return null;
+}
+
+function getExpandedEventDates() {
+  const dates = [];
+  state.events.forEach((event) => {
+    if (!event.isRepeating && event.date) {
+      dates.push(event.date);
+      return;
+    }
+
+    const start = parseDate(state.basic.startDate);
+    const end = getRecurringEndDate(event);
+    if (!start || !end) return;
+    getDateRange(start, end).forEach((date) => {
+      if (isRecurringEventOnDate(event, date)) {
+        dates.push(toISODate(date));
+      }
+    });
+  });
+  return dates;
 }
 
 function formatEventTime(event) {
@@ -1361,7 +1724,7 @@ async function scanAssignmentImageDemo() {
   const originalText = elements.scanAssignmentButton.textContent;
   elements.scanAssignmentButton.disabled = true;
   elements.scanAssignmentButton.textContent = "読み取り中...";
-  elements.scanResultList.innerHTML = '<p class="empty-message">Geminiで画像を読み取っています。</p>';
+  elements.scanResultList.innerHTML = '<p class="empty-message">AIで画像を読み取っています。</p>';
   let scanErrorMessage = "";
 
   try {
@@ -1385,9 +1748,9 @@ async function scanAssignmentImageDemo() {
       state.scannedAssignments = createDemoAssignmentsFromImageName(file.name);
     }
   } catch (error) {
-    console.warn("Geminiでの課題読み取りに失敗しました。", error);
+    console.warn("AIでの課題読み取りに失敗しました。", error);
     state.scannedAssignments = [];
-    scanErrorMessage = "Geminiでの読み取りに失敗しました。混み合っている可能性があるので、少し待ってもう一度試してください。";
+    scanErrorMessage = "うまく読み取れませんでした。手入力でも追加できます。";
   } finally {
     elements.scanAssignmentButton.disabled = false;
     elements.scanAssignmentButton.textContent = originalText;
@@ -1638,7 +2001,7 @@ function createPlanCard(day, today, compact) {
 function getMonthsInPlan() {
   const monthKeys = new Set([
     ...state.plan.map((day) => day.date.slice(0, 7)),
-    ...state.events.map((event) => event.date.slice(0, 7))
+    ...getExpandedEventDates().map((date) => date.slice(0, 7))
   ].filter(Boolean));
   return Array.from(monthKeys).sort().map((key) => {
     const [year, month] = key.split("-").map(Number);
@@ -1798,7 +2161,7 @@ async function handleAIMessage(event) {
 
   const assistantMessage = {
     role: "assistant",
-    text: "Geminiに聞いています..."
+    text: "AIが考えています..."
   };
   state.aiMessages.push(assistantMessage);
 
@@ -1810,7 +2173,7 @@ async function handleAIMessage(event) {
     assistantMessage.text = await requestGeminiAIReply(text);
   } catch (error) {
     console.warn("Gemini AI応答に失敗しました。デモ応答に切り替えます。", error);
-    assistantMessage.text = `${createDemoAIReply(text)}\n\n※Gemini接続に失敗したため、デモ応答を表示しています。`;
+    assistantMessage.text = `${createDemoAIReply(text)}\n\n※AI接続がうまくいかなかったため、お試し応答を表示しています。`;
   }
 
   saveState();
@@ -1877,7 +2240,7 @@ function renderAIChat() {
     ? state.aiMessages
     : [{
       role: "assistant",
-      text: "こんにちは。テスナビのAIです。\n勉強でわからないところ、計画の相談、ちょっと疲れたときの雑談まで、気軽に話してください。Geminiで返答します。"
+      text: "こんにちは。テスナビAIです。\n勉強でわからないところ、計画の相談、ちょっと疲れたときの雑談まで、気軽に話してください。"
     }];
 
   messages.forEach((message) => {
@@ -1933,6 +2296,7 @@ async function registerAccount(event) {
     updateRankingEntry();
     elements.registerForm.reset();
     setAuthMessage("登録しました。これからはアカウントにデータを同期します。", "success");
+    showTutorial(true);
   } catch (error) {
     console.warn("新規登録に失敗しました。", error);
     setAuthMessage(getAuthErrorMessage(error), "error");
@@ -2107,6 +2471,7 @@ function renderAccountSettings() {
   elements.accountEmailDisplay.textContent = email;
   elements.accountUsernameDisplay.textContent = isLoggedIn ? username : "未登録";
   elements.accountUidDisplay.textContent = uid;
+  elements.rankingOptIn.checked = Boolean(state.profile.rankingOptIn);
 
   if (!isLoggedIn) {
     setSyncDebug("ログインなしで利用中", "この端末には保存されています。別端末と同期するにはログインしてください。", getFirebaseStatePath(firebaseSync.pathRoot), "info");
