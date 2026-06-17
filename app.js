@@ -330,8 +330,9 @@ function initRankingListener() {
 
   firebaseSync.rankingRef.on("value", firebaseSync.rankingHandler, (error) => {
     console.warn("ランキングの読み込みに失敗しました。", error);
-    elements.rankingStatus.textContent = "読み込み失敗";
-    elements.rankingList.innerHTML = '<p class="empty-message">ランキングを読み込めませんでした。</p>';
+    accountState.rankings = [];
+    elements.rankingStatus.textContent = "準備中";
+    elements.rankingList.innerHTML = '<p class="empty-message">ランキングを表示する準備中です。ログインしてタスクを完了すると記録は保存されます。</p>';
   });
 }
 
@@ -925,7 +926,10 @@ function updateRankingEntry() {
   };
 
   firebaseSync.database.ref(`tesuraku/rankings/${accountState.user.uid}`).set(entry)
-    .catch((error) => console.warn("ランキングの更新に失敗しました。", error));
+    .catch((error) => {
+      console.warn("ランキングの更新に失敗しました。", error);
+      elements.rankingStatus.textContent = "準備中";
+    });
 }
 
 function getRankingUsername() {
