@@ -256,7 +256,7 @@ async function initFirebaseSync() {
     const appCheckReady = await initFirebaseAppCheck();
     if (!appCheckReady) {
       console.warn("App Checkに失敗しました。App Check適用中のFirebaseサービスでは接続が拒否される可能性があります。");
-      updateFirebaseStatus("この端末に保存中", "syncing");
+      updateFirebaseStatus(getLocalSaveStatusText(), "syncing");
     }
 
     firebaseSync.database = window.firebase.database(app);
@@ -268,7 +268,7 @@ async function initFirebaseSync() {
     connectFirebaseStateRef();
   } catch (error) {
     console.warn("Firebase初期化に失敗しました。", error);
-    updateFirebaseStatus(getFirebaseErrorLabel(error, "この端末に保存中"), "offline");
+    updateFirebaseStatus(getFirebaseErrorLabel(error, getLocalSaveStatusText()), "offline");
   }
 }
 
@@ -362,7 +362,7 @@ function connectFirebaseStateRef() {
   firebaseSync.stateRef = firebaseSync.database.ref(nextPath);
   firebaseSync.valueHandler = handleRemoteStateSnapshot;
 
-  updateFirebaseStatus(accountState.user ? "アカウント同期中" : "この端末に保存中", "syncing");
+  updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期中" : "この端末に保存中", "syncing");
   firebaseSync.stateRef.on("value", firebaseSync.valueHandler, (error) => {
     console.warn("Firebaseの読み込みに失敗しました。", error);
     updateFirebaseStatus(getFirebaseErrorLabel(error, "同期なしで利用中"), "offline");
@@ -370,8 +370,9 @@ function connectFirebaseStateRef() {
 }
 
 function getFirebaseStatePath() {
-  if (accountState.user) {
-    return `${APP_STORAGE_ROOT}/accounts/${accountState.user.uid}/state`;
+  const user = getSyncUser();
+  if (user) {
+    return `${APP_STORAGE_ROOT}/accounts/${user.uid}/state`;
   }
 
   return `${APP_STORAGE_ROOT}/users/${getDeviceId()}/state`;
@@ -382,7 +383,7 @@ function handleRemoteStateSnapshot(snapshot) {
 
   if (!remoteState) {
     queueFirebaseSave(createStateSnapshot());
-    updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "この端末に保存中", "online");
+    updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "この端末に保存中", "online");
     return;
   }
 
@@ -401,7 +402,7 @@ function handleRemoteStateSnapshot(snapshot) {
     queueFirebaseSave(createStateSnapshot());
   }
 
-  updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "この端末に保存中", "online");
+  updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "この端末に保存中", "online");
 }
 
 function getFirebaseErrorLabel(error, fallback) {
@@ -409,11 +410,11 @@ function getFirebaseErrorLabel(error, fallback) {
   const message = String(error && error.message ? error.message : "");
 
   if (code.includes("permission-denied") || message.includes("Permission denied")) {
-    return "同期なしで利用中";
+    return isLoggedInForSync() ? "同期なしで利用中" : "この端末に保存中";
   }
 
   if (code.includes("app-check") || message.toLowerCase().includes("app check")) {
-    return "この端末に保存中";
+    return getLocalSaveStatusText();
   }
 
   return fallback;
@@ -423,14 +424,14 @@ function queueFirebaseSave(snapshot) {
   if (!firebaseSync.enabled || !firebaseSync.stateRef) return;
 
   clearTimeout(firebaseSync.saveTimer);
-  updateFirebaseStatus(accountState.user ? "アカウント同期中" : "保存中", "syncing");
+  updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期中" : "保存中", "syncing");
 
   firebaseSync.saveTimer = setTimeout(() => {
     firebaseSync.stateRef.set(snapshot)
-      .then(() => updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "保存済み", "online"))
+      .then(() => updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "保存済み", "online"))
       .catch((error) => {
         console.warn("Firebaseへの保存に失敗しました。", error);
-        updateFirebaseStatus("この端末に保存中", "offline");
+        updateFirebaseStatus(getLocalSaveStatusText(), "offline");
       });
   }, 350);
 }
@@ -498,6 +499,18 @@ function getDeviceId() {
 function updateFirebaseStatus(text, status) {
   elements.firebaseStatus.textContent = text;
   elements.firebaseStatus.className = `firebase-status ${status}`;
+}
+
+function getSyncUser() {
+  return accountState.user || (firebaseSync.auth && firebaseSync.auth.currentUser) || null;
+}
+
+function isLoggedInForSync() {
+  return Boolean(getSyncUser());
+}
+
+function getLocalSaveStatusText() {
+  return isLoggedInForSync() ? "同期なしで利用中" : "この端末に保存中";
 }
 
 function fillBasicForm() {
@@ -922,10 +935,10 @@ function resetAll() {
 
   if (firebaseSync.enabled && firebaseSync.stateRef) {
     firebaseSync.stateRef.remove()
-      .then(() => updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "この端末に保存中", "online"))
+      .then(() => updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "この端末に保存中", "online"))
       .catch((error) => {
         console.warn("Firebaseデータの削除に失敗しました。", error);
-        updateFirebaseStatus("この端末に保存中", "offline");
+        updateFirebaseStatus(getLocalSaveStatusText(), "offline");
       });
   }
 
@@ -1763,8 +1776,11 @@ async function registerAccount(event) {
     const auth = getFirebaseAuth();
     const credential = await auth.createUserWithEmailAndPassword(email, password);
     await credential.user.updateProfile({ displayName: username });
+    accountState.user = credential.user;
     state.profile.username = username;
     saveState();
+    updateFirebaseStatus("アカウント同期中", "syncing");
+    connectFirebaseStateRef();
     updateRankingEntry();
     elements.registerForm.reset();
     setAuthMessage("登録しました。これからはアカウントにデータを同期します。", "success");
@@ -1788,6 +1804,9 @@ async function loginAccount(event) {
   try {
     const auth = getFirebaseAuth();
     await auth.signInWithEmailAndPassword(email, password);
+    accountState.user = auth.currentUser || accountState.user;
+    updateFirebaseStatus("アカウント同期中", "syncing");
+    connectFirebaseStateRef();
     elements.loginForm.reset();
     setAuthMessage("ログインしました。アカウントのデータと同期します。", "success");
   } catch (error) {
@@ -1805,6 +1824,9 @@ async function loginWithGoogle() {
     });
 
     await auth.signInWithPopup(provider);
+    accountState.user = auth.currentUser || accountState.user;
+    updateFirebaseStatus("アカウント同期中", "syncing");
+    connectFirebaseStateRef();
     if (!state.profile.username) {
       state.profile.username = getDefaultUsername(auth.currentUser);
       saveState();
