@@ -1,6 +1,11 @@
-const STORAGE_KEY = "tesuraku-state-v1";
-const DEVICE_ID_KEY = "tesuraku-device-id";
-const CONTACT_DRAFTS_KEY = "tesuraku-contact-drafts";
+const APP_STORAGE_ROOT = "tesnavi";
+const LEGACY_APP_STORAGE_ROOT = "tes" + "uraku";
+const STORAGE_KEY = "tesnavi-state-v1";
+const LEGACY_STORAGE_KEY = `${LEGACY_APP_STORAGE_ROOT}-state-v1`;
+const DEVICE_ID_KEY = "tesnavi-device-id";
+const LEGACY_DEVICE_ID_KEY = `${LEGACY_APP_STORAGE_ROOT}-device-id`;
+const CONTACT_DRAFTS_KEY = "tesnavi-contact-drafts";
+const LEGACY_CONTACT_DRAFTS_KEY = `${LEGACY_APP_STORAGE_ROOT}-contact-drafts`;
 const RECAPTCHA_SITE_KEY = "6LdB3CEtAAAAACpt-mWbKil76U66ok5MhI_M23LJ";
 
 const firebaseConfig = {
@@ -63,6 +68,8 @@ const state = {
   }
 };
 
+let editingSubjectId = null;
+
 const elements = {
   testName: document.getElementById("testName"),
   startDate: document.getElementById("startDate"),
@@ -86,11 +93,13 @@ const elements = {
   subjectList: document.getElementById("subjectList"),
   eventList: document.getElementById("eventList"),
   todayTodoList: document.getElementById("todayTodoList"),
+  dayPlanList: document.getElementById("dayPlanList"),
   calendarList: document.getElementById("calendarList"),
   unfinishedList: document.getElementById("unfinishedList"),
   generateButton: document.getElementById("generateButton"),
   redistributeButton: document.getElementById("redistributeButton"),
   resetButton: document.getElementById("resetButton"),
+  resetButtonSettings: document.getElementById("resetButtonSettings"),
   tabButtons: document.querySelectorAll(".tab-button"),
   tabPanels: document.querySelectorAll(".tab-panel"),
   daysLeft: document.getElementById("daysLeft"),
@@ -171,6 +180,7 @@ function bindEvents() {
   elements.generateButton.addEventListener("click", generatePlan);
   elements.redistributeButton.addEventListener("click", redistributeUnfinished);
   elements.resetButton.addEventListener("click", resetAll);
+  elements.resetButtonSettings.addEventListener("click", resetAll);
   elements.goInputButton.addEventListener("click", () => setActiveTab("input"));
   elements.goScheduleButton.addEventListener("click", () => setActiveTab("schedule"));
   elements.aiForm.addEventListener("submit", handleAIMessage);
@@ -210,12 +220,14 @@ function setActiveTab(tabName) {
 }
 
 function loadState() {
-  const saved = localStorage.getItem(STORAGE_KEY);
+  const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
   if (!saved) return;
 
   try {
     const parsed = JSON.parse(saved);
     applyStateSnapshot(parsed);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...parsed, updatedAt: parsed.updatedAt || Date.now() }));
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch (error) {
     console.warn("保存データを読み込めませんでした。", error);
   }
@@ -232,7 +244,7 @@ function saveState() {
 
 async function initFirebaseSync() {
   if (!window.firebase || !window.firebase.database) {
-    updateFirebaseStatus("Firebase SDK未読み込み", "offline");
+    updateFirebaseStatus("この端末に保存中", "offline");
     return;
   }
 
@@ -244,19 +256,19 @@ async function initFirebaseSync() {
     const appCheckReady = await initFirebaseAppCheck();
     if (!appCheckReady) {
       console.warn("App Checkに失敗しました。App Check適用中のFirebaseサービスでは接続が拒否される可能性があります。");
-      updateFirebaseStatus("App Check未確認", "syncing");
+      updateFirebaseStatus("この端末に保存中", "syncing");
     }
 
     firebaseSync.database = window.firebase.database(app);
     firebaseSync.enabled = true;
-    updateFirebaseStatus("Firebase接続中", "syncing");
+    updateFirebaseStatus("保存準備中", "syncing");
 
     initFirebaseAuth(app);
     initRankingListener();
     connectFirebaseStateRef();
   } catch (error) {
     console.warn("Firebase初期化に失敗しました。", error);
-    updateFirebaseStatus(getFirebaseErrorLabel(error, "Firebase接続失敗"), "offline");
+    updateFirebaseStatus(getFirebaseErrorLabel(error, "この端末に保存中"), "offline");
   }
 }
 
@@ -272,7 +284,7 @@ async function initFirebaseAppCheck() {
     // App Checkの適用後もRealtime DatabaseやAI Logicへアクセスできるようにする。
     const appCheck = window.firebase.appCheck();
     appCheck.activate(RECAPTCHA_SITE_KEY, true);
-    updateFirebaseStatus("App Check確認中", "syncing");
+    updateFirebaseStatus("保存準備中", "syncing");
 
     if (typeof appCheck.getToken === "function") {
       await appCheck.getToken(false);
@@ -309,7 +321,7 @@ function initFirebaseAuth(app) {
 function initRankingListener() {
   if (!firebaseSync.database || firebaseSync.rankingRef) return;
 
-  firebaseSync.rankingRef = firebaseSync.database.ref("tesuraku/rankings");
+  firebaseSync.rankingRef = firebaseSync.database.ref(`${APP_STORAGE_ROOT}/rankings`);
   firebaseSync.rankingHandler = (snapshot) => {
     const value = snapshot.val() || {};
     accountState.rankings = Object.keys(value).map((uid) => ({
@@ -350,19 +362,19 @@ function connectFirebaseStateRef() {
   firebaseSync.stateRef = firebaseSync.database.ref(nextPath);
   firebaseSync.valueHandler = handleRemoteStateSnapshot;
 
-  updateFirebaseStatus(accountState.user ? "アカウント同期中" : "端末同期中", "syncing");
+  updateFirebaseStatus(accountState.user ? "アカウント同期中" : "この端末に保存中", "syncing");
   firebaseSync.stateRef.on("value", firebaseSync.valueHandler, (error) => {
     console.warn("Firebaseの読み込みに失敗しました。", error);
-    updateFirebaseStatus(getFirebaseErrorLabel(error, "Firebase同期エラー"), "offline");
+    updateFirebaseStatus(getFirebaseErrorLabel(error, "同期なしで利用中"), "offline");
   });
 }
 
 function getFirebaseStatePath() {
   if (accountState.user) {
-    return `tesuraku/accounts/${accountState.user.uid}/state`;
+    return `${APP_STORAGE_ROOT}/accounts/${accountState.user.uid}/state`;
   }
 
-  return `tesuraku/users/${getDeviceId()}/state`;
+  return `${APP_STORAGE_ROOT}/users/${getDeviceId()}/state`;
 }
 
 function handleRemoteStateSnapshot(snapshot) {
@@ -370,7 +382,7 @@ function handleRemoteStateSnapshot(snapshot) {
 
   if (!remoteState) {
     queueFirebaseSave(createStateSnapshot());
-    updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "端末保存済み", "online");
+    updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "この端末に保存中", "online");
     return;
   }
 
@@ -389,7 +401,7 @@ function handleRemoteStateSnapshot(snapshot) {
     queueFirebaseSave(createStateSnapshot());
   }
 
-  updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "端末保存済み", "online");
+  updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "この端末に保存中", "online");
 }
 
 function getFirebaseErrorLabel(error, fallback) {
@@ -397,11 +409,11 @@ function getFirebaseErrorLabel(error, fallback) {
   const message = String(error && error.message ? error.message : "");
 
   if (code.includes("permission-denied") || message.includes("Permission denied")) {
-    return "Firebase権限エラー";
+    return "同期なしで利用中";
   }
 
   if (code.includes("app-check") || message.toLowerCase().includes("app check")) {
-    return "App Checkエラー";
+    return "この端末に保存中";
   }
 
   return fallback;
@@ -411,14 +423,14 @@ function queueFirebaseSave(snapshot) {
   if (!firebaseSync.enabled || !firebaseSync.stateRef) return;
 
   clearTimeout(firebaseSync.saveTimer);
-  updateFirebaseStatus("Firebase保存中", "syncing");
+  updateFirebaseStatus(accountState.user ? "アカウント同期中" : "保存中", "syncing");
 
   firebaseSync.saveTimer = setTimeout(() => {
     firebaseSync.stateRef.set(snapshot)
-      .then(() => updateFirebaseStatus("Firebase同期済み", "online"))
+      .then(() => updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "保存済み", "online"))
       .catch((error) => {
         console.warn("Firebaseへの保存に失敗しました。", error);
-        updateFirebaseStatus("Firebase保存失敗", "offline");
+        updateFirebaseStatus("この端末に保存中", "offline");
       });
   }, 350);
 }
@@ -466,7 +478,7 @@ function normalizeProfile(value) {
 
 function getLocalUpdatedAt() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY) || "{}");
     return Number(saved.updatedAt || 0);
   } catch (error) {
     return 0;
@@ -474,11 +486,12 @@ function getLocalUpdatedAt() {
 }
 
 function getDeviceId() {
-  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+  let deviceId = localStorage.getItem(DEVICE_ID_KEY) || localStorage.getItem(LEGACY_DEVICE_ID_KEY);
   if (!deviceId) {
     deviceId = `device-${createId()}`;
-    localStorage.setItem(DEVICE_ID_KEY, deviceId);
   }
+  localStorage.setItem(DEVICE_ID_KEY, deviceId);
+  localStorage.removeItem(LEGACY_DEVICE_ID_KEY);
   return deviceId;
 }
 
@@ -499,7 +512,7 @@ function addSubject(event) {
   event.preventDefault();
 
   const subject = {
-    id: createId(),
+    id: editingSubjectId || createId(),
     name: elements.subjectName.value.trim(),
     range: elements.subjectRange.value.trim(),
     amount: Number(elements.studyAmount.value),
@@ -512,18 +525,57 @@ function addSubject(event) {
     return;
   }
 
-  state.subjects.push(subject);
+  if (editingSubjectId) {
+    state.subjects = state.subjects.map((item) => item.id === editingSubjectId ? subject : item);
+  } else {
+    state.subjects.push(subject);
+  }
+
+  editingSubjectId = null;
   saveState();
-  elements.subjectForm.reset();
-  elements.studyUnit.value = "ページ";
-  elements.weakness.value = "普通";
+  resetSubjectForm();
   renderAll();
+}
+
+function editSubject(id) {
+  const subject = state.subjects.find((item) => item.id === id);
+  if (!subject) return;
+
+  editingSubjectId = id;
+  elements.subjectName.value = subject.name;
+  elements.subjectRange.value = subject.range;
+  elements.studyAmount.value = subject.amount;
+  elements.studyUnit.value = subject.unit;
+  elements.weakness.value = subject.weakness;
+  setSubjectFormMode(true);
+  setActiveTab("input");
+  elements.subjectName.focus();
+  elements.subjectForm.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function deleteSubject(id) {
   state.subjects = state.subjects.filter((subject) => subject.id !== id);
+  if (editingSubjectId === id) {
+    editingSubjectId = null;
+    resetSubjectForm();
+  }
   saveState();
   renderAll();
+}
+
+function resetSubjectForm() {
+  elements.subjectForm.reset();
+  elements.studyUnit.value = "ページ";
+  elements.weakness.value = "普通";
+  setSubjectFormMode(false);
+}
+
+function setSubjectFormMode(isEditing) {
+  const submitButton = elements.subjectForm.querySelector('button[type="submit"]');
+  if (!submitButton) return;
+  submitButton.textContent = isEditing ? "変更を保存" : "教科を追加";
+  submitButton.classList.toggle("secondary-button", isEditing);
+  submitButton.classList.toggle("primary-button", !isEditing);
 }
 
 function addEvent(event) {
@@ -600,6 +652,11 @@ function syncBasicFromForm() {
 
 function generatePlan() {
   if (!validateBeforeGenerate()) return;
+
+  if (state.plan.length > 0) {
+    const ok = confirm("今の計画を作り直しますか？完了状態や未完了リストがリセットされる場合があります。");
+    if (!ok) return;
+  }
 
   const startDate = parseDate(state.basic.startDate);
   const testDate = parseDate(state.basic.testDate);
@@ -791,7 +848,7 @@ function countTasksForPlanDay(day) {
 
 function redistributeUnfinished() {
   if (state.unfinished.length === 0) {
-    alert("再配分する未完了の予定がありません。");
+    alert("再配分する未完了の予定がありません。できなかった予定を追加してから使ってください。");
     return;
   }
 
@@ -810,7 +867,7 @@ function redistributeUnfinished() {
   });
 
   if (targets.length === 0) {
-    alert("今日以降で再配分できる日がありません。");
+    alert("今日以降で再配分できる日がありません。テスト前日より前で、まだ完了していない日が必要です。");
     return;
   }
 
@@ -839,6 +896,9 @@ function resetAll() {
   if (!ok) return;
 
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+  localStorage.removeItem(CONTACT_DRAFTS_KEY);
+  localStorage.removeItem(LEGACY_CONTACT_DRAFTS_KEY);
   state.basic = {
     testName: "",
     startDate: "",
@@ -853,18 +913,19 @@ function resetAll() {
   state.aiMessages = [];
   state.scannedAssignments = [];
   state.achievement = normalizeAchievement();
+  editingSubjectId = null;
   elements.basicForm.reset();
-  elements.subjectForm.reset();
+  resetSubjectForm();
   elements.eventForm.reset();
   elements.aiForm.reset();
   elements.assignmentImageInput.value = "";
 
   if (firebaseSync.enabled && firebaseSync.stateRef) {
     firebaseSync.stateRef.remove()
-      .then(() => updateFirebaseStatus("Firebaseデータ削除済み", "online"))
+      .then(() => updateFirebaseStatus(accountState.user ? "アカウント同期済み" : "この端末に保存中", "online"))
       .catch((error) => {
         console.warn("Firebaseデータの削除に失敗しました。", error);
-        updateFirebaseStatus("Firebase削除失敗", "offline");
+        updateFirebaseStatus("この端末に保存中", "offline");
       });
   }
 
@@ -925,7 +986,7 @@ function updateRankingEntry() {
     updatedAt: Date.now()
   };
 
-  firebaseSync.database.ref(`tesuraku/rankings/${accountState.user.uid}`).set(entry)
+  firebaseSync.database.ref(`${APP_STORAGE_ROOT}/rankings/${accountState.user.uid}`).set(entry)
     .catch((error) => {
       console.warn("ランキングの更新に失敗しました。", error);
       elements.rankingStatus.textContent = "準備中";
@@ -964,6 +1025,17 @@ function renderDashboardNext() {
         <ul>
           <li>${escapeHTML(nextEvent.type)}：${escapeHTML(nextEvent.title)}</li>
           ${nextEvent.note ? `<li>${escapeHTML(nextEvent.note)}</li>` : ""}
+        </ul>
+      `;
+    }
+    if (!nextEvent) {
+      elements.dashboardNextTitle.textContent = "まずは入力タブでテスト情報を入れよう";
+      elements.dashboardNextMeta.textContent = "1. テスト日を入力 → 2. 教科を追加 → 3. 計画作成";
+      elements.dashboardNextItems.innerHTML = `
+        <ul>
+          <li>テスト名・日付・勉強時間を入力</li>
+          <li>教科と範囲を追加</li>
+          <li>「計画を作成する」で今日からの予定を自動作成</li>
         </ul>
       `;
     }
@@ -1012,13 +1084,17 @@ function renderSubjects() {
           <h3>${escapeHTML(subject.name)}</h3>
           <span class="badge">${escapeHTML(subject.weakness)}</span>
         </div>
-        <button class="button danger-button small-button" type="button">削除</button>
+        <div class="card-actions">
+          <button class="button secondary-button small-button" type="button" data-action="edit">編集</button>
+          <button class="button danger-button small-button" type="button" data-action="delete">削除</button>
+        </div>
       </div>
       <p class="subject-meta">${escapeHTML(subject.range)}</p>
       <p class="subject-meta">${escapeHTML(String(subject.amount))}${escapeHTML(subject.unit)}</p>
     `;
 
-    card.querySelector("button").addEventListener("click", () => deleteSubject(subject.id));
+    card.querySelector('[data-action="edit"]').addEventListener("click", () => editSubject(subject.id));
+    card.querySelector('[data-action="delete"]').addEventListener("click", () => deleteSubject(subject.id));
     elements.subjectList.appendChild(card);
   });
 }
@@ -1276,18 +1352,21 @@ function addAllScannedAssignmentsToSubjects() {
 
 function renderPlan() {
   elements.todayTodoList.innerHTML = "";
+  elements.dayPlanList.innerHTML = "";
   elements.calendarList.innerHTML = "";
   elements.planName.textContent = state.basic.testName ? state.basic.testName : "";
   elements.calendarTitle.textContent = "";
 
   if (state.plan.length === 0 && state.events.length === 0) {
     elements.todayTodoList.innerHTML = '<p class="empty-message">入力（+）タブで基本情報と教科を入力して、計画を作成してください。</p>';
+    elements.dayPlanList.innerHTML = '<p class="empty-message">計画を作成すると、今日以降の予定が見やすく並びます。</p>';
     elements.calendarList.innerHTML = '<p class="empty-message">計画を作成すると、ここにカレンダー形式で表示されます。</p>';
     return;
   }
 
   const today = startOfToday();
   renderTodayTodo(today);
+  renderDayPlanList(today);
   renderCalendarSchedule(today);
 }
 
@@ -1306,6 +1385,22 @@ function renderTodayTodo(today) {
   }
 
   elements.todayTodoList.appendChild(createPlanCard(todayPlan, today, false));
+}
+
+function renderDayPlanList(today) {
+  const upcoming = state.plan.filter((day) => {
+    const date = parseDate(day.date);
+    return date && date >= today;
+  });
+
+  if (upcoming.length === 0) {
+    elements.dayPlanList.innerHTML = '<p class="empty-message">今日以降の勉強予定はありません。</p>';
+    return;
+  }
+
+  upcoming.forEach((day) => {
+    elements.dayPlanList.appendChild(createPlanCard(day, today, false));
+  });
 }
 
 function renderCalendarSchedule(today) {
@@ -1485,11 +1580,30 @@ function renderUnfinished() {
     const item = document.createElement("article");
     item.className = "unfinished-item";
     item.innerHTML = `
-      <strong>${formatDateShort(date)} ${getWeekday(date)}</strong>
+      <div class="unfinished-head">
+        <strong>${formatDateShort(date)} ${getWeekday(date)}</strong>
+        <button class="button danger-button small-button" type="button">削除</button>
+      </div>
       <ul>${entry.items.map((text) => `<li>${escapeHTML(text)}</li>`).join("")}</ul>
     `;
+    item.querySelector("button").addEventListener("click", () => deleteUnfinished(entry.id));
     elements.unfinishedList.appendChild(item);
   });
+}
+
+function deleteUnfinished(id) {
+  const target = state.unfinished.find((entry) => entry.id === id);
+  state.unfinished = state.unfinished.filter((entry) => entry.id !== id);
+
+  if (target) {
+    const planDay = state.plan.find((day) => day.id === target.planId);
+    if (planDay && planDay.status === "missed") {
+      planDay.status = "pending";
+    }
+  }
+
+  saveState();
+  renderAll();
 }
 
 function renderStats() {
@@ -1608,7 +1722,7 @@ function renderAIChat() {
     const item = document.createElement("article");
     item.className = `ai-message ${message.role}`;
     item.innerHTML = `
-      <span class="ai-message-role">${message.role === "user" ? "あなた" : "テスラクAI"}</span>
+      <span class="ai-message-role">${message.role === "user" ? "あなた" : "テスナビAI"}</span>
       <p class="ai-message-text">${escapeHTML(message.text)}</p>
     `;
     elements.aiMessages.appendChild(item);
@@ -1786,7 +1900,7 @@ async function submitContact(event) {
       throw new Error("Firebase Database is not ready.");
     }
 
-    await firebaseSync.database.ref(`tesuraku/inquiries/${inquiry.id}`).set(inquiry);
+    await firebaseSync.database.ref(`${APP_STORAGE_ROOT}/inquiries/${inquiry.id}`).set(inquiry);
     elements.contactForm.reset();
     setContactMessage("お問い合わせを送信しました。", "success");
   } catch (error) {
@@ -1835,7 +1949,7 @@ function setContactMessage(message, type) {
 }
 
 function saveContactDraft(inquiry) {
-  const saved = localStorage.getItem(CONTACT_DRAFTS_KEY);
+  const saved = localStorage.getItem(CONTACT_DRAFTS_KEY) || localStorage.getItem(LEGACY_CONTACT_DRAFTS_KEY);
   let drafts = [];
 
   try {
@@ -1846,6 +1960,7 @@ function saveContactDraft(inquiry) {
 
   drafts.push(inquiry);
   localStorage.setItem(CONTACT_DRAFTS_KEY, JSON.stringify(drafts.slice(-20)));
+  localStorage.removeItem(LEGACY_CONTACT_DRAFTS_KEY);
 }
 
 function getAuthErrorMessage(error) {
@@ -1861,7 +1976,7 @@ function getAuthErrorMessage(error) {
   if (code.includes("popup-closed-by-user")) return "Googleログイン画面が閉じられました。もう一度試してください。";
   if (code.includes("popup-blocked")) return "ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください。";
   if (code.includes("account-exists-with-different-credential")) return "同じメールアドレスの別ログイン方法がすでに登録されています。先にその方法でログインしてください。";
-  if (code.includes("operation-not-allowed")) return "Firebase Consoleでメール/パスワードまたはGoogleログインを有効にしてください。";
+  if (code.includes("operation-not-allowed")) return "ログイン方法の設定がまだ有効になっていません。メール/パスワードまたはGoogleログインを有効にしてください。";
   if (message) return message;
   return "処理に失敗しました。時間をおいてもう一度試してください。";
 }

@@ -120,9 +120,9 @@ select {
 }
 
 .firebase-status.offline {
-  color: var(--red-600);
-  background: var(--red-50);
-  border-color: #fecaca;
+  color: #475467;
+  background: #f8fafc;
+  border-color: #d9e2ef;
 }
 
 .eyebrow {
@@ -193,6 +193,13 @@ h2 {
   place-items: center;
   gap: 2px;
   font-weight: 800;
+}
+
+.tab-label {
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .tab-button.active {
@@ -575,6 +582,13 @@ select:focus {
   border-left-color: var(--yellow-600);
 }
 
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .scan-result-toolbar {
   grid-column: 1 / -1;
   display: flex;
@@ -647,6 +661,15 @@ select:focus {
 }
 
 .today-todo-list {
+  display: grid;
+  gap: 14px;
+}
+
+.day-list-panel {
+  display: none;
+}
+
+.day-plan-list {
   display: grid;
   gap: 14px;
 }
@@ -761,6 +784,14 @@ select:focus {
   background: var(--yellow-100);
 }
 
+.calendar-panel {
+  overflow: hidden;
+}
+
+.calendar-panel .section-title {
+  padding-right: 16px;
+}
+
 .calendar-list {
   display: grid;
   gap: 22px;
@@ -775,6 +806,8 @@ select:focus {
 }
 
 .calendar-scroll {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   padding-bottom: 4px;
 }
@@ -1010,9 +1043,16 @@ select:focus {
   border-color: #fed7aa;
 }
 
+.unfinished-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
 .unfinished-item strong {
   display: block;
-  margin-bottom: 8px;
 }
 
 .unfinished-item ul {
@@ -1317,7 +1357,7 @@ select:focus {
   .tab-nav {
     right: auto;
     left: 50%;
-    width: min(360px, calc(100vw - 20px));
+    width: min(430px, calc(100vw - 16px));
     transform: translateX(-50%);
     bottom: max(10px, env(safe-area-inset-bottom));
     gap: 4px;
@@ -1325,17 +1365,18 @@ select:focus {
   }
 
   .tab-button {
-    min-height: 50px;
+    min-height: 56px;
     padding: 6px 4px;
   }
 
   .tab-icon {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
   }
 
   .tab-label {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
+    font-weight: 900;
   }
 
   .panel {
@@ -1381,6 +1422,16 @@ select:focus {
     padding-right: 0;
   }
 
+  .plan-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .plan-actions .button {
+    min-height: 46px;
+    width: 100%;
+  }
+
   .plan-card.today::before {
     position: static;
     display: inline-flex;
@@ -1398,6 +1449,33 @@ select:focus {
   .scan-result-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .card-actions,
+  .unfinished-head {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .unfinished-head {
+    flex-direction: column;
+  }
+
+  .day-list-panel {
+    display: block;
+  }
+
+  .day-plan-list .plan-card {
+    padding: 16px;
+  }
+
+  .calendar-panel {
+    opacity: 0.98;
   }
 
   .ai-messages {
