@@ -21,12 +21,15 @@ const firebaseSync = {
   database: null,
   enabled: false,
   isApplyingRemote: false,
+  rankingRef: null,
+  rankingHandler: null,
   saveTimer: null,
   stateRef: null,
   valueHandler: null
 };
 
 const accountState = {
+  rankings: [],
   user: null
 };
 
@@ -49,7 +52,15 @@ const state = {
   plan: [],
   unfinished: [],
   aiMessages: [],
-  scannedAssignments: []
+  scannedAssignments: [],
+  achievement: {
+    totalCompletedTasks: 0,
+    currentTaskStreak: 0,
+    bestTaskStreak: 0
+  },
+  profile: {
+    username: ""
+  }
 };
 
 const elements = {
@@ -86,7 +97,12 @@ const elements = {
   progressText: document.getElementById("progressText"),
   progressBar: document.getElementById("progressBar"),
   subjectCount: document.getElementById("subjectCount"),
+  totalTaskCount: document.getElementById("totalTaskCount"),
+  currentTaskStreak: document.getElementById("currentTaskStreak"),
+  bestTaskStreak: document.getElementById("bestTaskStreak"),
   unfinishedCount: document.getElementById("unfinishedCount"),
+  rankingList: document.getElementById("rankingList"),
+  rankingStatus: document.getElementById("rankingStatus"),
   planName: document.getElementById("planName"),
   calendarTitle: document.getElementById("calendarTitle"),
   dashboardNextTitle: document.getElementById("dashboardNextTitle"),
@@ -105,6 +121,7 @@ const elements = {
   scanResultList: document.getElementById("scanResultList"),
   firebaseStatus: document.getElementById("firebaseStatus"),
   registerForm: document.getElementById("registerForm"),
+  registerUsername: document.getElementById("registerUsername"),
   registerEmail: document.getElementById("registerEmail"),
   registerPassword: document.getElementById("registerPassword"),
   registerPasswordConfirm: document.getElementById("registerPasswordConfirm"),
@@ -118,9 +135,11 @@ const elements = {
   accountStatusDescription: document.getElementById("accountStatusDescription"),
   accountLoginState: document.getElementById("accountLoginState"),
   accountEmailDisplay: document.getElementById("accountEmailDisplay"),
+  accountUsernameDisplay: document.getElementById("accountUsernameDisplay"),
   accountUidDisplay: document.getElementById("accountUidDisplay"),
   authMessage: document.getElementById("authMessage"),
   accountUpdateForm: document.getElementById("accountUpdateForm"),
+  accountNewUsername: document.getElementById("accountNewUsername"),
   accountNewEmail: document.getElementById("accountNewEmail"),
   accountNewPassword: document.getElementById("accountNewPassword"),
   contactForm: document.getElementById("contactForm"),
@@ -233,6 +252,7 @@ async function initFirebaseSync() {
     updateFirebaseStatus("Firebase接続中", "syncing");
 
     initFirebaseAuth(app);
+    initRankingListener();
     connectFirebaseStateRef();
   } catch (error) {
     console.warn("Firebase初期化に失敗しました。", error);
@@ -276,8 +296,42 @@ function initFirebaseAuth(app) {
   firebaseSync.auth = window.firebase.auth(app);
   firebaseSync.auth.onAuthStateChanged((user) => {
     accountState.user = user || null;
+    if (user && !state.profile.username) {
+      state.profile.username = getDefaultUsername(user);
+      saveState();
+    }
     renderAccountSettings();
     connectFirebaseStateRef();
+    updateRankingEntry();
+  });
+}
+
+function initRankingListener() {
+  if (!firebaseSync.database || firebaseSync.rankingRef) return;
+
+  firebaseSync.rankingRef = firebaseSync.database.ref("tesuraku/rankings");
+  firebaseSync.rankingHandler = (snapshot) => {
+    const value = snapshot.val() || {};
+    accountState.rankings = Object.keys(value).map((uid) => ({
+      uid,
+      username: String(value[uid].username || "名無し"),
+      totalCompletedTasks: Number(value[uid].totalCompletedTasks || 0),
+      currentTaskStreak: Number(value[uid].currentTaskStreak || 0),
+      updatedAt: Number(value[uid].updatedAt || 0)
+    })).sort((a, b) => {
+      if (b.totalCompletedTasks !== a.totalCompletedTasks) {
+        return b.totalCompletedTasks - a.totalCompletedTasks;
+      }
+      return b.updatedAt - a.updatedAt;
+    }).slice(0, 30);
+
+    renderRanking();
+  };
+
+  firebaseSync.rankingRef.on("value", firebaseSync.rankingHandler, (error) => {
+    console.warn("ランキングの読み込みに失敗しました。", error);
+    elements.rankingStatus.textContent = "読み込み失敗";
+    elements.rankingList.innerHTML = '<p class="empty-message">ランキングを読み込めませんでした。</p>';
   });
 }
 
@@ -329,6 +383,7 @@ function handleRemoteStateSnapshot(snapshot) {
     fillBasicForm();
     renderAll();
     firebaseSync.isApplyingRemote = false;
+    updateRankingEntry();
   } else if (localUpdatedAt > remoteUpdatedAt) {
     queueFirebaseSave(createStateSnapshot());
   }
@@ -376,6 +431,8 @@ function createStateSnapshot() {
     unfinished: state.unfinished,
     aiMessages: state.aiMessages,
     scannedAssignments: state.scannedAssignments,
+    achievement: state.achievement,
+    profile: state.profile,
     updatedAt: Date.now()
   };
 }
@@ -388,6 +445,22 @@ function applyStateSnapshot(snapshot) {
   state.unfinished = Array.isArray(snapshot.unfinished) ? snapshot.unfinished : [];
   state.aiMessages = Array.isArray(snapshot.aiMessages) ? snapshot.aiMessages : [];
   state.scannedAssignments = Array.isArray(snapshot.scannedAssignments) ? snapshot.scannedAssignments : [];
+  state.achievement = normalizeAchievement(snapshot.achievement);
+  state.profile = normalizeProfile(snapshot.profile);
+}
+
+function normalizeAchievement(value) {
+  return {
+    totalCompletedTasks: Math.max(0, Number(value && value.totalCompletedTasks) || 0),
+    currentTaskStreak: Math.max(0, Number(value && value.currentTaskStreak) || 0),
+    bestTaskStreak: Math.max(0, Number(value && value.bestTaskStreak) || 0)
+  };
+}
+
+function normalizeProfile(value) {
+  return {
+    username: String(value && value.username ? value.username : "").trim()
+  };
 }
 
 function getLocalUpdatedAt() {
@@ -668,9 +741,14 @@ function markComplete(planId) {
   const target = state.plan.find((day) => day.id === planId);
   if (!target) return;
 
+  const wasDone = target.status === "done";
   target.status = "done";
   state.unfinished = state.unfinished.filter((item) => item.planId !== planId);
+  if (!wasDone) {
+    recordCompletedTasks(countTasksForPlanDay(target));
+  }
   saveState();
+  updateRankingEntry();
   renderAll();
 }
 
@@ -690,8 +768,24 @@ function markUnfinished(planId) {
   }
 
   target.status = "missed";
+  state.achievement.currentTaskStreak = 0;
   saveState();
+  updateRankingEntry();
   renderAll();
+}
+
+function recordCompletedTasks(taskCount) {
+  const count = Math.max(1, Number(taskCount) || 1);
+  state.achievement.totalCompletedTasks += count;
+  state.achievement.currentTaskStreak += count;
+  state.achievement.bestTaskStreak = Math.max(
+    state.achievement.bestTaskStreak,
+    state.achievement.currentTaskStreak
+  );
+}
+
+function countTasksForPlanDay(day) {
+  return Array.isArray(day.items) && day.items.length > 0 ? day.items.length : 1;
 }
 
 function redistributeUnfinished() {
@@ -757,6 +851,7 @@ function resetAll() {
   state.unfinished = [];
   state.aiMessages = [];
   state.scannedAssignments = [];
+  state.achievement = normalizeAchievement();
   elements.basicForm.reset();
   elements.subjectForm.reset();
   elements.eventForm.reset();
@@ -772,6 +867,7 @@ function resetAll() {
       });
   }
 
+  updateRankingEntry();
   renderAll();
 }
 
@@ -782,9 +878,67 @@ function renderAll() {
   renderPlan();
   renderUnfinished();
   renderStats();
+  renderRanking();
   renderDashboardNext();
   renderAIChat();
   renderAccountSettings();
+}
+
+function renderRanking() {
+  if (!elements.rankingList) return;
+
+  const rankings = accountState.rankings || [];
+  elements.rankingStatus.textContent = rankings.length > 0 ? `${rankings.length}人` : "未登録";
+
+  if (rankings.length === 0) {
+    elements.rankingList.innerHTML = '<p class="empty-message">まだランキング参加者がいません。ログインしてタスクを完了すると表示されます。</p>';
+    return;
+  }
+
+  elements.rankingList.innerHTML = "";
+  rankings.forEach((entry, index) => {
+    const item = document.createElement("article");
+    item.className = `ranking-item ${entry.uid === (accountState.user && accountState.user.uid) ? "me" : ""}`;
+    item.innerHTML = `
+      <div class="ranking-main">
+        <span class="ranking-rank">${index + 1}</span>
+        <strong>${escapeHTML(entry.username)}</strong>
+      </div>
+      <div class="ranking-score">
+        <strong>${entry.totalCompletedTasks}</strong>
+        <span>連続 ${entry.currentTaskStreak}</span>
+      </div>
+    `;
+    elements.rankingList.appendChild(item);
+  });
+}
+
+function updateRankingEntry() {
+  if (!firebaseSync.database || !accountState.user) return;
+
+  const username = getRankingUsername();
+  const entry = {
+    username,
+    totalCompletedTasks: Math.max(0, Number(state.achievement.totalCompletedTasks) || 0),
+    currentTaskStreak: Math.max(0, Number(state.achievement.currentTaskStreak) || 0),
+    updatedAt: Date.now()
+  };
+
+  firebaseSync.database.ref(`tesuraku/rankings/${accountState.user.uid}`).set(entry)
+    .catch((error) => console.warn("ランキングの更新に失敗しました。", error));
+}
+
+function getRankingUsername() {
+  return state.profile.username
+    || getDefaultUsername(accountState.user)
+    || "名無し";
+}
+
+function getDefaultUsername(user) {
+  if (!user) return "";
+  if (user.displayName) return user.displayName;
+  if (user.email) return user.email.split("@")[0];
+  return "名無し";
 }
 
 function renderDashboardNext() {
@@ -1336,6 +1490,9 @@ function renderUnfinished() {
 
 function renderStats() {
   elements.subjectCount.textContent = `${state.subjects.length}教科`;
+  elements.totalTaskCount.textContent = `${state.achievement.totalCompletedTasks}`;
+  elements.currentTaskStreak.textContent = `${state.achievement.currentTaskStreak}`;
+  elements.bestTaskStreak.textContent = `${state.achievement.bestTaskStreak}`;
   elements.daysLeft.textContent = getDaysLeftText();
 
   const total = state.plan.length;
@@ -1459,9 +1616,15 @@ function renderAIChat() {
 async function registerAccount(event) {
   event.preventDefault();
 
+  const username = elements.registerUsername.value.trim();
   const email = elements.registerEmail.value.trim();
   const password = elements.registerPassword.value;
   const confirm = elements.registerPasswordConfirm.value;
+
+  if (!username) {
+    setAuthMessage("ランキングに表示するユーザー名を入力してください。", "error");
+    return;
+  }
 
   if (!email || !password || !confirm) {
     setAuthMessage("メールアドレスとパスワードを入力してください。", "error");
@@ -1480,7 +1643,11 @@ async function registerAccount(event) {
 
   try {
     const auth = getFirebaseAuth();
-    await auth.createUserWithEmailAndPassword(email, password);
+    const credential = await auth.createUserWithEmailAndPassword(email, password);
+    await credential.user.updateProfile({ displayName: username });
+    state.profile.username = username;
+    saveState();
+    updateRankingEntry();
     elements.registerForm.reset();
     setAuthMessage("登録しました。これからはアカウントにデータを同期します。", "success");
   } catch (error) {
@@ -1520,6 +1687,11 @@ async function loginWithGoogle() {
     });
 
     await auth.signInWithPopup(provider);
+    if (!state.profile.username) {
+      state.profile.username = getDefaultUsername(auth.currentUser);
+      saveState();
+    }
+    updateRankingEntry();
     setAuthMessage("Googleアカウントでログインしました。アカウントのデータと同期します。", "success");
   } catch (error) {
     console.warn("Googleログインに失敗しました。", error);
@@ -1547,15 +1719,21 @@ async function updateAccountInfo(event) {
     return;
   }
 
+  const nextUsername = elements.accountNewUsername.value.trim();
   const nextEmail = elements.accountNewEmail.value.trim();
   const nextPassword = elements.accountNewPassword.value;
 
-  if (!nextEmail && !nextPassword) {
-    setAuthMessage("変更したいメールアドレスかパスワードを入力してください。", "error");
+  if (!nextUsername && !nextEmail && !nextPassword) {
+    setAuthMessage("変更したいユーザー名、メールアドレス、パスワードのどれかを入力してください。", "error");
     return;
   }
 
   try {
+    if (nextUsername && nextUsername !== state.profile.username) {
+      await user.updateProfile({ displayName: nextUsername });
+      state.profile.username = nextUsername;
+    }
+
     if (nextEmail && nextEmail !== user.email) {
       await user.updateEmail(nextEmail);
     }
@@ -1571,6 +1749,8 @@ async function updateAccountInfo(event) {
     await user.reload();
     accountState.user = getFirebaseAuth().currentUser;
     elements.accountUpdateForm.reset();
+    saveState();
+    updateRankingEntry();
     renderAccountSettings();
     setAuthMessage("ログイン情報を更新しました。", "success");
   } catch (error) {
@@ -1625,6 +1805,7 @@ function renderAccountSettings() {
   const user = accountState.user;
   const isLoggedIn = Boolean(user);
   const email = user && user.email ? user.email : "未登録";
+  const username = state.profile.username || getDefaultUsername(user) || "未登録";
   const uid = user && user.uid ? user.uid : "未登録";
 
   elements.accountStatusBadge.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
@@ -1635,6 +1816,7 @@ function renderAccountSettings() {
   elements.logoutButton.hidden = !isLoggedIn;
   elements.accountLoginState.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
   elements.accountEmailDisplay.textContent = email;
+  elements.accountUsernameDisplay.textContent = isLoggedIn ? username : "未登録";
   elements.accountUidDisplay.textContent = uid;
 }
 

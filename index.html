@@ -278,6 +278,10 @@
           <form id="registerForm" class="settings-form">
             <h3>新規登録</h3>
             <label>
+              <span>ユーザー名</span>
+              <input id="registerUsername" type="text" autocomplete="nickname" maxlength="20" placeholder="ランキングに表示する名前">
+            </label>
+            <label>
               <span>メールアドレス</span>
               <input id="registerEmail" type="email" autocomplete="email" placeholder="name@example.com">
             </label>
@@ -331,11 +335,19 @@
                 <dd id="accountEmailDisplay">未登録</dd>
               </div>
               <div>
+                <dt>ユーザー名</dt>
+                <dd id="accountUsernameDisplay">未登録</dd>
+              </div>
+              <div>
                 <dt>ユーザーID</dt>
                 <dd id="accountUidDisplay">未登録</dd>
               </div>
             </dl>
             <form id="accountUpdateForm" class="settings-form compact-settings-form">
+              <label>
+                <span>新しいユーザー名</span>
+                <input id="accountNewUsername" type="text" autocomplete="nickname" maxlength="20" placeholder="変更しない場合は空欄">
+              </label>
               <label>
                 <span>新しいメールアドレス</span>
                 <input id="accountNewEmail" type="email" autocomplete="email" placeholder="変更しない場合は空欄">
@@ -402,6 +414,28 @@
         <div class="status-card status-subjects">
           <span class="status-label">登録教科</span>
           <strong id="subjectCount">0教科</strong>
+        </div>
+        <div class="status-card status-tasks">
+          <span class="status-label">累計達成タスク</span>
+          <strong id="totalTaskCount">0</strong>
+        </div>
+        <div class="status-card status-streak">
+          <span class="status-label">連続達成タスク</span>
+          <strong id="currentTaskStreak">0</strong>
+          <p class="status-detail">最高 <span id="bestTaskStreak">0</span></p>
+        </div>
+      </section>
+
+      <section class="panel ranking-panel">
+        <div class="section-title">
+          <div>
+            <h2>達成タスクランキング</h2>
+            <p class="section-description">順位は累計達成タスク数で決まります。連続タスク数は今の状態として横に表示します。</p>
+          </div>
+          <span id="rankingStatus" class="section-note">読み込み中</span>
+        </div>
+        <div id="rankingList" class="ranking-list" aria-live="polite">
+          <p class="empty-message">ランキングを読み込んでいます。</p>
         </div>
       </section>
 

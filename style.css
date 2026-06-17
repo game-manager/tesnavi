@@ -291,7 +291,7 @@ h2 {
 
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin: 14px 0;
 }
@@ -337,6 +337,14 @@ h2 {
   background: var(--yellow-600);
 }
 
+.status-tasks::before {
+  background: var(--blue-700);
+}
+
+.status-streak::before {
+  background: var(--green-600);
+}
+
 .status-label {
   display: block;
   color: var(--muted);
@@ -349,6 +357,13 @@ h2 {
   margin-top: 8px;
   font-size: clamp(1.55rem, 3.2vw, 2.15rem);
   line-height: 1.2;
+}
+
+.status-detail {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
 }
 
 .progress-track {
@@ -927,6 +942,67 @@ select:focus {
 .unfinished-list {
   display: grid;
   gap: 12px;
+}
+
+.ranking-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ranking-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  background: #fbfdff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.ranking-item.me {
+  background: var(--blue-50);
+  border-color: #bfdbfe;
+}
+
+.ranking-main {
+  display: flex;
+  min-width: 0;
+  gap: 10px;
+  align-items: center;
+}
+
+.ranking-main strong {
+  overflow-wrap: anywhere;
+}
+
+.ranking-rank {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: #ffffff;
+  background: var(--blue-600);
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.ranking-score {
+  display: grid;
+  justify-items: end;
+  min-width: 86px;
+}
+
+.ranking-score strong {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.ranking-score span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .unfinished-item {
