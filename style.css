@@ -1198,6 +1198,49 @@ select:focus {
   border-radius: 8px;
 }
 
+.sync-debug-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 14px;
+  padding: 16px;
+  background: #fbfdff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sync-debug-title {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.05rem;
+}
+
+.sync-debug-title.success {
+  color: var(--green-600);
+}
+
+.sync-debug-title.error {
+  color: var(--red-600);
+}
+
+.sync-debug-title.syncing,
+.sync-debug-title.info {
+  color: var(--blue-700);
+}
+
+.sync-debug-path {
+  display: block;
+  margin-top: 10px;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+  color: #475467;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.78rem;
+}
+
 .account-status-card strong {
   display: block;
   margin-top: 6px;
@@ -1396,7 +1439,8 @@ select:focus {
   .section-title,
   .plan-head,
   .card-top,
-  .account-status-card {
+  .account-status-card,
+  .sync-debug-card {
     flex-direction: column;
     align-items: flex-start;
   }

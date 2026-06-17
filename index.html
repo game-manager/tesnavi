@@ -274,6 +274,16 @@
           </div>
           <button id="logoutButton" class="button secondary-button small-button" type="button" hidden>ログアウト</button>
         </div>
+
+        <div class="sync-debug-card">
+          <div>
+            <span class="status-label">同期チェック</span>
+            <strong id="syncDebugTitle">未チェック</strong>
+            <p id="syncDebugDescription" class="section-description">ログイン後に同期できない場合は、ここに原因のヒントを表示します。</p>
+            <code id="syncDebugPath" class="sync-debug-path">保存先: 未確認</code>
+          </div>
+          <button id="syncCheckButton" class="button secondary-button small-button" type="button">再チェック</button>
+        </div>
       </section>
 
       <section class="panel auth-grid-panel">

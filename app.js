@@ -26,6 +26,8 @@ const firebaseSync = {
   database: null,
   enabled: false,
   isApplyingRemote: false,
+  lastError: null,
+  lastStatusDetail: "",
   pathRoot: APP_STORAGE_ROOT,
   rankingRef: null,
   rankingHandler: null,
@@ -148,6 +150,10 @@ const elements = {
   accountEmailDisplay: document.getElementById("accountEmailDisplay"),
   accountUsernameDisplay: document.getElementById("accountUsernameDisplay"),
   accountUidDisplay: document.getElementById("accountUidDisplay"),
+  syncCheckButton: document.getElementById("syncCheckButton"),
+  syncDebugTitle: document.getElementById("syncDebugTitle"),
+  syncDebugDescription: document.getElementById("syncDebugDescription"),
+  syncDebugPath: document.getElementById("syncDebugPath"),
   authMessage: document.getElementById("authMessage"),
   accountUpdateForm: document.getElementById("accountUpdateForm"),
   accountNewUsername: document.getElementById("accountNewUsername"),
@@ -192,6 +198,7 @@ function bindEvents() {
   elements.loginForm.addEventListener("submit", loginAccount);
   elements.googleLoginButton.addEventListener("click", loginWithGoogle);
   elements.logoutButton.addEventListener("click", logoutAccount);
+  elements.syncCheckButton.addEventListener("click", checkAccountSync);
   elements.accountUpdateForm.addEventListener("submit", updateAccountInfo);
   elements.contactForm.addEventListener("submit", submitContact);
 
@@ -368,9 +375,11 @@ function connectFirebaseStateRef() {
   firebaseSync.valueHandler = handleRemoteStateSnapshot;
 
   updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期中" : "この端末に保存中", "syncing");
+  setSyncDebug("同期確認中", "アカウントの保存先へ接続しています。", nextPath, "syncing");
   firebaseSync.stateRef.on("value", firebaseSync.valueHandler, (error) => {
     console.warn("Firebaseの読み込みに失敗しました。", error);
     if (tryLegacyFirebaseStatePath(error)) return;
+    rememberSyncError(error, "データの読み込み");
     updateFirebaseStatus(getFirebaseErrorLabel(error, "同期なしで利用中"), "offline");
   });
 }
@@ -420,10 +429,18 @@ function isPermissionError(error) {
 
 function handleRemoteStateSnapshot(snapshot) {
   const remoteState = snapshot.val();
+  firebaseSync.lastError = null;
+  firebaseSync.lastStatusDetail = "";
 
   if (!remoteState) {
     queueFirebaseSave(createStateSnapshot());
     updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "この端末に保存中", "online");
+    setSyncDebug(
+      isLoggedInForSync() ? "同期できています" : "この端末に保存中",
+      isLoggedInForSync() ? "アカウントの保存先へ接続できました。" : "ログインなしで、この端末に保存しています。",
+      firebaseSync.currentPath,
+      "success"
+    );
     return;
   }
 
@@ -443,6 +460,12 @@ function handleRemoteStateSnapshot(snapshot) {
   }
 
   updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "この端末に保存中", "online");
+  setSyncDebug(
+    isLoggedInForSync() ? "同期できています" : "この端末に保存中",
+    isLoggedInForSync() ? "アカウントのデータを読み込めています。" : "ログインなしで、この端末に保存しています。",
+    firebaseSync.currentPath,
+    "success"
+  );
 }
 
 function getFirebaseErrorLabel(error, fallback) {
@@ -471,6 +494,7 @@ function queueFirebaseSave(snapshot) {
       .then(() => updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "保存済み", "online"))
       .catch((error) => {
         console.warn("Firebaseへの保存に失敗しました。", error);
+        rememberSyncError(error, "データの保存");
         updateFirebaseStatus(getLocalSaveStatusText(), "offline");
       });
   }, 350);
@@ -539,6 +563,91 @@ function getDeviceId() {
 function updateFirebaseStatus(text, status) {
   elements.firebaseStatus.textContent = text;
   elements.firebaseStatus.className = `firebase-status ${status}`;
+}
+
+function rememberSyncError(error, action) {
+  firebaseSync.lastError = {
+    action,
+    code: String(error && error.code ? error.code : ""),
+    message: String(error && error.message ? error.message : "")
+  };
+  const reason = getSyncErrorHelp(error);
+  firebaseSync.lastStatusDetail = reason;
+  setSyncDebug("同期できていません", reason, firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "error");
+}
+
+function getSyncErrorHelp(error) {
+  const code = String(error && error.code ? error.code : "");
+  const message = String(error && error.message ? error.message : "");
+  const lowerMessage = message.toLowerCase();
+
+  if (isPermissionError(error)) {
+    return "Realtime Databaseのルールで拒否されています。Firebase Consoleで、ログイン中のユーザーが accounts/{uid} と rankings を読み書きできるルールになっているか確認してください。";
+  }
+
+  if (code.includes("app-check") || lowerMessage.includes("app check")) {
+    return "App Checkで拒否されています。GitHub PagesのドメインとreCAPTCHAサイトキーがFirebase App Checkに登録され、Realtime Databaseへ適用されているか確認してください。";
+  }
+
+  if (lowerMessage.includes("network") || lowerMessage.includes("failed to fetch")) {
+    return "ネットワーク接続で失敗しています。通信環境を確認してから再チェックしてください。";
+  }
+
+  return message ? `同期エラー: ${message}` : "同期エラーが発生しました。Firebaseの設定を確認してください。";
+}
+
+function setSyncDebug(title, description, path, type) {
+  if (!elements.syncDebugTitle) return;
+  elements.syncDebugTitle.textContent = title;
+  elements.syncDebugDescription.textContent = description;
+  elements.syncDebugPath.textContent = `保存先: ${path || "未確認"}`;
+  elements.syncDebugTitle.className = `sync-debug-title ${type || ""}`.trim();
+}
+
+async function checkAccountSync() {
+  if (!firebaseSync.database) {
+    setSyncDebug("同期の準備ができていません", "ページを再読み込みしてから、もう一度試してください。", "未確認", "error");
+    return;
+  }
+
+  if (!isLoggedInForSync()) {
+    setSyncDebug("ログインなしで利用中", "別端末と同期するには、Googleまたはメールアドレスでログインしてください。", getFirebaseStatePath(firebaseSync.pathRoot), "info");
+    return;
+  }
+
+  const originalText = elements.syncCheckButton.textContent;
+  elements.syncCheckButton.disabled = true;
+  elements.syncCheckButton.textContent = "確認中";
+
+  try {
+    setSyncDebug("同期確認中", "アカウントの保存先へテスト保存しています。", getFirebaseStatePath(firebaseSync.pathRoot), "syncing");
+    await firebaseSync.database.ref(getFirebaseStatePath(firebaseSync.pathRoot)).set(createStateSnapshot());
+    firebaseSync.lastError = null;
+    firebaseSync.lastStatusDetail = "";
+    updateFirebaseStatus("アカウント同期済み", "online");
+    setSyncDebug("同期できています", "テスト保存に成功しました。別端末でも同じアカウントでデータを読み込めます。", getFirebaseStatePath(firebaseSync.pathRoot), "success");
+  } catch (error) {
+    console.warn("同期チェックに失敗しました。", error);
+    if (tryLegacyFirebaseStatePath(error)) {
+      try {
+        await firebaseSync.database.ref(getFirebaseStatePath(firebaseSync.pathRoot)).set(createStateSnapshot());
+        firebaseSync.lastError = null;
+        firebaseSync.lastStatusDetail = "";
+        updateFirebaseStatus("アカウント同期済み", "online");
+        setSyncDebug("同期できています", "互換保存先でテスト保存に成功しました。", getFirebaseStatePath(firebaseSync.pathRoot), "success");
+      } catch (legacyError) {
+        rememberSyncError(legacyError, "同期チェック");
+        updateFirebaseStatus(getFirebaseErrorLabel(legacyError, "同期なしで利用中"), "offline");
+      }
+    } else {
+      rememberSyncError(error, "同期チェック");
+      updateFirebaseStatus(getFirebaseErrorLabel(error, "同期なしで利用中"), "offline");
+    }
+  } finally {
+    elements.syncCheckButton.disabled = false;
+    elements.syncCheckButton.textContent = originalText;
+    renderAccountSettings();
+  }
 }
 
 function getSyncUser() {
@@ -1998,6 +2107,22 @@ function renderAccountSettings() {
   elements.accountEmailDisplay.textContent = email;
   elements.accountUsernameDisplay.textContent = isLoggedIn ? username : "未登録";
   elements.accountUidDisplay.textContent = uid;
+
+  if (!isLoggedIn) {
+    setSyncDebug("ログインなしで利用中", "この端末には保存されています。別端末と同期するにはログインしてください。", getFirebaseStatePath(firebaseSync.pathRoot), "info");
+    return;
+  }
+
+  if (firebaseSync.lastError) {
+    setSyncDebug("同期できていません", firebaseSync.lastStatusDetail || getSyncErrorHelp(firebaseSync.lastError), firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "error");
+    return;
+  }
+
+  if (elements.firebaseStatus.textContent.includes("同期済み")) {
+    setSyncDebug("同期できています", "アカウントの保存先へ接続できています。", firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "success");
+  } else {
+    setSyncDebug("同期確認中", "まだ同期結果を確認中です。しばらく待つか、再チェックを押してください。", firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "syncing");
+  }
 }
 
 function setAuthMessage(message, type) {
