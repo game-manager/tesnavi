@@ -509,8 +509,12 @@ function initRankingListener() {
     console.warn("ランキングの読み込みに失敗しました。", error);
     if (tryLegacyRankingPath(error)) return;
     accountState.rankings = [];
-    elements.rankingStatus.textContent = "準備中";
-    elements.rankingList.innerHTML = '<p class="empty-message">ランキングを表示する準備中です。ログインしてタスクを完了すると記録は保存されます。</p>';
+    if (elements.rankingStatus) {
+      elements.rankingStatus.textContent = "準備中";
+    }
+    if (elements.rankingList) {
+      elements.rankingList.innerHTML = '<p class="empty-message">ランキングを表示する準備中です。ログインしてタスクを完了すると記録は保存されます。</p>';
+    }
   });
 }
 
@@ -733,6 +737,7 @@ function getDeviceId() {
 }
 
 function updateFirebaseStatus(text, status) {
+  if (!elements.firebaseStatus) return;
   elements.firebaseStatus.textContent = text;
   elements.firebaseStatus.className = `firebase-status ${status}`;
 }
@@ -769,11 +774,14 @@ function getSyncErrorHelp(error) {
 }
 
 function setSyncDebug(title, description, path, type) {
-  if (!elements.syncDebugTitle) return;
-  elements.syncDebugTitle.textContent = title;
-  elements.syncDebugDescription.textContent = description;
+  if (elements.syncDebugTitle) {
+    elements.syncDebugTitle.textContent = title;
+    elements.syncDebugTitle.className = `sync-debug-title ${type || ""}`.trim();
+  }
+  if (elements.syncDebugDescription) {
+    elements.syncDebugDescription.textContent = description;
+  }
   if (path) console.info("Sync detail:", path);
-  elements.syncDebugTitle.className = `sync-debug-title ${type || ""}`.trim();
 }
 
 async function checkAccountSync() {
@@ -787,9 +795,11 @@ async function checkAccountSync() {
     return;
   }
 
-  const originalText = elements.syncCheckButton.textContent;
-  elements.syncCheckButton.disabled = true;
-  elements.syncCheckButton.textContent = "確認中";
+  const originalText = elements.syncCheckButton ? elements.syncCheckButton.textContent : "";
+  if (elements.syncCheckButton) {
+    elements.syncCheckButton.disabled = true;
+    elements.syncCheckButton.textContent = "確認中";
+  }
 
   try {
     setSyncDebug("同期確認中", "アカウントの保存先へテスト保存しています。", getFirebaseStatePath(firebaseSync.pathRoot), "syncing");
@@ -816,8 +826,10 @@ async function checkAccountSync() {
       updateFirebaseStatus(getFirebaseErrorLabel(error, "同期なしで利用中"), "offline");
     }
   } finally {
-    elements.syncCheckButton.disabled = false;
-    elements.syncCheckButton.textContent = originalText;
+    if (elements.syncCheckButton) {
+      elements.syncCheckButton.disabled = false;
+      elements.syncCheckButton.textContent = originalText;
+    }
     renderAccountSettings();
   }
 }
@@ -1388,7 +1400,9 @@ function renderRanking() {
   const rankings = (accountState.rankings || []).filter((entry) => {
     return entry.uid !== currentUid || state.profile.rankingOptIn;
   });
-  elements.rankingStatus.textContent = rankings.length > 0 ? `${rankings.length}人` : "未登録";
+  if (elements.rankingStatus) {
+    elements.rankingStatus.textContent = rankings.length > 0 ? `${rankings.length}人` : "未登録";
+  }
 
   if (rankings.length === 0) {
     elements.rankingList.innerHTML = '<p class="empty-message">まだ参加者はいません。設定タブで参加すると、ユーザー名と達成数が表示されます。</p>';
@@ -1431,7 +1445,9 @@ function updateRankingEntry() {
   firebaseSync.database.ref(`${firebaseSync.rankingRoot}/rankings/${accountState.user.uid}`).set(entry)
     .catch((error) => {
       console.warn("ランキングの更新に失敗しました。", error);
-      elements.rankingStatus.textContent = "準備中";
+      if (elements.rankingStatus) {
+        elements.rankingStatus.textContent = "準備中";
+      }
     });
 }
 
@@ -2460,17 +2476,35 @@ function renderAccountSettings() {
   const username = state.profile.username || getDefaultUsername(user) || "未登録";
   const uid = user && user.uid ? user.uid : "未登録";
 
-  elements.accountStatusBadge.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
-  elements.accountStatusTitle.textContent = isLoggedIn ? "アカウント同期で利用中" : "端末内保存で利用中";
-  elements.accountStatusDescription.textContent = isLoggedIn
-    ? "このアカウントでログインすれば、別の端末からも同じデータにアクセスできます。"
-    : "この端末には保存されますが、別の端末からは同じデータにアクセスできません。";
-  elements.logoutButton.hidden = !isLoggedIn;
-  elements.accountLoginState.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
-  elements.accountEmailDisplay.textContent = email;
-  elements.accountUsernameDisplay.textContent = isLoggedIn ? username : "未登録";
-  elements.accountUidDisplay.textContent = uid;
-  elements.rankingOptIn.checked = Boolean(state.profile.rankingOptIn);
+  if (elements.accountStatusBadge) {
+    elements.accountStatusBadge.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
+  }
+  if (elements.accountStatusTitle) {
+    elements.accountStatusTitle.textContent = isLoggedIn ? "アカウント同期で利用中" : "端末内保存で利用中";
+  }
+  if (elements.accountStatusDescription) {
+    elements.accountStatusDescription.textContent = isLoggedIn
+      ? "このアカウントでログインすれば、別の端末からも同じデータにアクセスできます。"
+      : "この端末には保存されますが、別の端末からは同じデータにアクセスできません。";
+  }
+  if (elements.logoutButton) {
+    elements.logoutButton.hidden = !isLoggedIn;
+  }
+  if (elements.accountLoginState) {
+    elements.accountLoginState.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
+  }
+  if (elements.accountEmailDisplay) {
+    elements.accountEmailDisplay.textContent = email;
+  }
+  if (elements.accountUsernameDisplay) {
+    elements.accountUsernameDisplay.textContent = isLoggedIn ? username : "未登録";
+  }
+  if (elements.accountUidDisplay) {
+    elements.accountUidDisplay.textContent = uid;
+  }
+  if (elements.rankingOptIn) {
+    elements.rankingOptIn.checked = Boolean(state.profile.rankingOptIn);
+  }
 
   if (!isLoggedIn) {
     setSyncDebug("ログインなしで利用中", "この端末には保存されています。別端末と同期するにはログインしてください。", getFirebaseStatePath(firebaseSync.pathRoot), "info");
@@ -2482,7 +2516,7 @@ function renderAccountSettings() {
     return;
   }
 
-  if (elements.firebaseStatus.textContent.includes("同期済み")) {
+  if (elements.firebaseStatus && elements.firebaseStatus.textContent.includes("同期済み")) {
     setSyncDebug("同期できています", "アカウントの保存先へ接続できています。", firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "success");
   } else {
     setSyncDebug("同期確認中", "まだ同期結果を確認中です。しばらく待つか、再チェックを押してください。", firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "syncing");
@@ -2490,11 +2524,13 @@ function renderAccountSettings() {
 }
 
 function setAuthMessage(message, type) {
+  if (!elements.authMessage) return;
   elements.authMessage.textContent = message;
   elements.authMessage.className = `settings-message ${type || ""}`.trim();
 }
 
 function setContactMessage(message, type) {
+  if (!elements.contactMessageStatus) return;
   elements.contactMessageStatus.textContent = message;
   elements.contactMessageStatus.className = `settings-message ${type || ""}`.trim();
 }
