@@ -79,31 +79,33 @@ let editingEventId = null;
 let currentEventMode = "single";
 let tutorialOpen = false;
 let tutorialStepIndex = 0;
+let currentTutorialTarget = null;
+let tutorialPositionTimer = null;
 
 const tutorialSteps = [
   {
     title: "テスナビへようこそ",
     body: "テスト日と範囲を入れるだけで、毎日の勉強計画を作れます。まずは使い方をかんたんに確認しましょう。",
     tab: "dashboard",
-    target: ".dashboard-hero"
+    target: "#goInputButton"
   },
   {
     title: "まずは基本情報を入力",
     body: "入力タブで、テスト名・計画開始日・テスト開始日・平日と休日の勉強時間を入力します。",
     tab: "input",
-    target: "#basicForm"
+    target: "#testName"
   },
   {
     title: "教科と範囲を追加",
     body: "数学や英語などの教科名、テスト範囲、勉強量、苦手度を追加します。苦手な教科は少し多めに計画へ入ります。",
     tab: "input",
-    target: "#subjectForm"
+    target: "#subjectName"
   },
   {
     title: "部活や予定も入れられる",
     body: "部活や習い事がある日を入れると、その日は少し軽めの計画になります。毎週ある予定は、曜日を選んでまとめて登録できます。",
     tab: "input",
-    target: "#eventForm"
+    target: ".event-mode-group"
   },
   {
     title: "計画を作成",
@@ -115,19 +117,19 @@ const tutorialSteps = [
     title: "今日やることを確認",
     body: "計画タブでは、今日のTodoと今日以降の予定を確認できます。毎日ここを見れば、何をやるか迷いません。",
     tab: "schedule",
-    target: ".plan-panel"
+    target: "#todayTodoList"
   },
   {
     title: "進み具合を記録",
     body: "勉強できた日は「完了」、できなかった日は「できなかった」を押します。未完了分はあとで再配分できます。",
     tab: "schedule",
-    target: ".day-list-panel"
+    target: "#dayPlanList"
   },
   {
     title: "準備完了",
     body: "これで使い方はOKです。まずは入力タブからテスト情報を入れてみましょう。",
     tab: "input",
-    target: "#basicForm"
+    target: "#testName"
   }
 ];
 
@@ -186,6 +188,7 @@ const elements = {
   dashboardNextItems: document.getElementById("dashboardNextItems"),
   goInputButton: document.getElementById("goInputButton"),
   goScheduleButton: document.getElementById("goScheduleButton"),
+  dashboardTutorialButton: document.getElementById("dashboardTutorialButton"),
   aiForm: document.getElementById("aiForm"),
   aiInput: document.getElementById("aiInput"),
   aiMessages: document.getElementById("aiMessages"),
@@ -198,6 +201,7 @@ const elements = {
   firebaseStatus: document.getElementById("firebaseStatus"),
   registerForm: document.getElementById("registerForm"),
   registerUsername: document.getElementById("registerUsername"),
+  registerRankingOptIn: document.getElementById("registerRankingOptIn"),
   registerEmail: document.getElementById("registerEmail"),
   registerPassword: document.getElementById("registerPassword"),
   registerPasswordConfirm: document.getElementById("registerPasswordConfirm"),
@@ -228,6 +232,7 @@ const elements = {
   contactMessageStatus: document.getElementById("contactMessageStatus"),
   rankingOptIn: document.getElementById("rankingOptIn"),
   tutorialOverlay: document.getElementById("tutorialOverlay"),
+  tutorialModal: document.getElementById("tutorialModal"),
   tutorialTitle: document.getElementById("tutorialTitle"),
   tutorialBody: document.getElementById("tutorialBody"),
   tutorialStepText: document.getElementById("tutorialStepText"),
@@ -235,7 +240,9 @@ const elements = {
   tutorialBackButton: document.getElementById("tutorialBackButton"),
   tutorialNextButton: document.getElementById("tutorialNextButton"),
   tutorialSkipButton: document.getElementById("tutorialSkipButton"),
-  tutorialReplayButton: document.getElementById("tutorialReplayButton")
+  tutorialReplayButton: document.getElementById("tutorialReplayButton"),
+  subjectCancelButton: document.getElementById("subjectCancelButton"),
+  eventCancelButton: document.getElementById("eventCancelButton")
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -264,6 +271,7 @@ function bindEvents() {
   elements.resetButtonSettings.addEventListener("click", resetAll);
   elements.goInputButton.addEventListener("click", () => setActiveTab("input"));
   elements.goScheduleButton.addEventListener("click", () => setActiveTab("schedule"));
+  elements.dashboardTutorialButton.addEventListener("click", () => showTutorial(true));
   elements.aiForm.addEventListener("submit", handleAIMessage);
   elements.assignmentImageInput.addEventListener("change", handleAssignmentImageChange);
   elements.scanAssignmentButton.addEventListener("click", scanAssignmentImageDemo);
@@ -279,6 +287,8 @@ function bindEvents() {
   elements.tutorialNextButton.addEventListener("click", nextTutorialStep);
   elements.tutorialSkipButton.addEventListener("click", finishTutorial);
   elements.rankingOptIn.addEventListener("change", handleRankingOptInChange);
+  elements.subjectCancelButton.addEventListener("click", resetSubjectForm);
+  elements.eventCancelButton.addEventListener("click", resetEventForm);
 
   elements.eventModeButtons.forEach((button) => {
     button.addEventListener("click", () => setEventMode(button.dataset.eventMode));
@@ -329,6 +339,8 @@ function showTutorial(force) {
   tutorialStepIndex = 0;
   elements.tutorialOverlay.hidden = false;
   document.body.classList.add("tutorial-active");
+  window.addEventListener("resize", positionCurrentTutorialModal);
+  window.addEventListener("scroll", positionCurrentTutorialModal, { passive: true });
   renderTutorialStep();
 }
 
@@ -347,9 +359,61 @@ function renderTutorialStep() {
 
   const target = document.querySelector(step.target);
   if (target) {
+    currentTutorialTarget = target;
     target.classList.add("tutorial-highlight");
     target.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.clearTimeout(tutorialPositionTimer);
+    tutorialPositionTimer = window.setTimeout(positionCurrentTutorialModal, 360);
+    window.requestAnimationFrame(positionCurrentTutorialModal);
+  } else {
+    currentTutorialTarget = null;
+    positionCurrentTutorialModal();
   }
+}
+
+function positionCurrentTutorialModal() {
+  if (!tutorialOpen || !elements.tutorialModal) return;
+
+  const modal = elements.tutorialModal;
+  const margin = 14;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  modal.style.position = "fixed";
+  modal.style.transform = "none";
+  modal.style.maxWidth = `calc(100vw - ${margin * 2}px)`;
+
+  const modalRect = modal.getBoundingClientRect();
+  const modalWidth = Math.min(modalRect.width, viewportWidth - margin * 2);
+  const modalHeight = Math.min(modalRect.height, viewportHeight - margin * 2);
+
+  if (!currentTutorialTarget) {
+    modal.style.left = `${Math.max(margin, (viewportWidth - modalWidth) / 2)}px`;
+    modal.style.top = `${Math.max(margin, (viewportHeight - modalHeight) / 2)}px`;
+    return;
+  }
+
+  const targetRect = currentTutorialTarget.getBoundingClientRect();
+  const targetCenterX = targetRect.left + targetRect.width / 2;
+  const belowTop = targetRect.bottom + margin;
+  const aboveTop = targetRect.top - modalHeight - margin;
+  const hasRoomBelow = belowTop + modalHeight <= viewportHeight - margin;
+  const hasRoomAbove = aboveTop >= margin;
+  const preferBelow = targetRect.top < viewportHeight * 0.5;
+
+  let top;
+  if ((preferBelow && hasRoomBelow) || !hasRoomAbove) {
+    top = belowTop;
+  } else {
+    top = aboveTop;
+  }
+
+  let left = targetCenterX - modalWidth / 2;
+  left = Math.min(Math.max(margin, left), viewportWidth - modalWidth - margin);
+  top = Math.min(Math.max(margin, top), viewportHeight - modalHeight - margin);
+
+  modal.style.left = `${left}px`;
+  modal.style.top = `${top}px`;
 }
 
 function nextTutorialStep() {
@@ -372,7 +436,13 @@ function finishTutorial() {
   tutorialOpen = false;
   elements.tutorialOverlay.hidden = true;
   document.body.classList.remove("tutorial-active");
+  window.removeEventListener("resize", positionCurrentTutorialModal);
+  window.removeEventListener("scroll", positionCurrentTutorialModal);
+  window.clearTimeout(tutorialPositionTimer);
   clearTutorialHighlight();
+  if (elements.tutorialModal) {
+    elements.tutorialModal.removeAttribute("style");
+  }
   setActiveTab("input");
 }
 
@@ -380,6 +450,7 @@ function clearTutorialHighlight() {
   document.querySelectorAll(".tutorial-highlight").forEach((element) => {
     element.classList.remove("tutorial-highlight");
   });
+  currentTutorialTarget = null;
 }
 
 function loadState() {
@@ -532,13 +603,13 @@ function connectFirebaseStateRef() {
   firebaseSync.stateRef = firebaseSync.database.ref(nextPath);
   firebaseSync.valueHandler = handleRemoteStateSnapshot;
 
-  updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期中" : "この端末に保存中", "syncing");
-  setSyncDebug("同期確認中", "アカウントの保存先へ接続しています。", nextPath, "syncing");
+  updateFirebaseStatus(isLoggedInForSync() ? "アカウントに保存中" : "この端末に保存中", "syncing");
+  setSyncDebug("保存を確認中", "アカウントの保存先へ接続しています。", nextPath, "syncing");
   firebaseSync.stateRef.on("value", firebaseSync.valueHandler, (error) => {
     console.warn("Firebaseの読み込みに失敗しました。", error);
     if (tryLegacyFirebaseStatePath(error)) return;
     rememberSyncError(error, "データの読み込み");
-    updateFirebaseStatus(getFirebaseErrorLabel(error, "同期なしで利用中"), "offline");
+    updateFirebaseStatus(getFirebaseErrorLabel(error, getLocalSaveStatusText()), "offline");
   });
 }
 
@@ -556,7 +627,7 @@ function tryLegacyFirebaseStatePath(error) {
 
   firebaseSync.pathRoot = LEGACY_APP_STORAGE_ROOT;
   firebaseSync.currentPath = "";
-  updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期中" : "保存準備中", "syncing");
+  updateFirebaseStatus(isLoggedInForSync() ? "アカウントに保存中" : "保存準備中", "syncing");
   connectFirebaseStateRef();
   return true;
 }
@@ -592,9 +663,9 @@ function handleRemoteStateSnapshot(snapshot) {
 
   if (!remoteState) {
     queueFirebaseSave(createStateSnapshot());
-    updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "この端末に保存中", "online");
+    updateFirebaseStatus(isLoggedInForSync() ? "アカウントに保存済み" : "この端末に保存中", "online");
     setSyncDebug(
-      isLoggedInForSync() ? "同期できています" : "この端末に保存中",
+      isLoggedInForSync() ? "保存できています" : "この端末に保存中",
       isLoggedInForSync() ? "アカウントの保存先へ接続できました。" : "ログインなしで、この端末に保存しています。",
       firebaseSync.currentPath,
       "success"
@@ -617,9 +688,9 @@ function handleRemoteStateSnapshot(snapshot) {
     queueFirebaseSave(createStateSnapshot());
   }
 
-  updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "この端末に保存中", "online");
+  updateFirebaseStatus(isLoggedInForSync() ? "アカウントに保存済み" : "この端末に保存中", "online");
   setSyncDebug(
-    isLoggedInForSync() ? "同期できています" : "この端末に保存中",
+    isLoggedInForSync() ? "保存できています" : "この端末に保存中",
     isLoggedInForSync() ? "アカウントのデータを読み込めています。" : "ログインなしで、この端末に保存しています。",
     firebaseSync.currentPath,
     "success"
@@ -631,7 +702,7 @@ function getFirebaseErrorLabel(error, fallback) {
   const message = String(error && error.message ? error.message : "");
 
   if (isPermissionError(error)) {
-    return isLoggedInForSync() ? "同期なしで利用中" : "この端末に保存中";
+    return isLoggedInForSync() ? "この端末に保存中" : "この端末に保存中";
   }
 
   if (code.includes("app-check") || message.toLowerCase().includes("app check")) {
@@ -645,11 +716,11 @@ function queueFirebaseSave(snapshot) {
   if (!firebaseSync.enabled || !firebaseSync.stateRef) return;
 
   clearTimeout(firebaseSync.saveTimer);
-  updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期中" : "保存中", "syncing");
+  updateFirebaseStatus(isLoggedInForSync() ? "アカウントに保存中" : "保存中", "syncing");
 
   firebaseSync.saveTimer = setTimeout(() => {
     firebaseSync.stateRef.set(snapshot)
-      .then(() => updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "保存済み", "online"))
+      .then(() => updateFirebaseStatus(isLoggedInForSync() ? "アカウントに保存済み" : "保存済み", "online"))
       .catch((error) => {
         console.warn("Firebaseへの保存に失敗しました。", error);
         rememberSyncError(error, "データの保存");
@@ -750,7 +821,7 @@ function rememberSyncError(error, action) {
   };
   const reason = getSyncErrorHelp(error);
   firebaseSync.lastStatusDetail = reason;
-  setSyncDebug("同期できていません", reason, firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "error");
+  setSyncDebug("保存を確認できません", reason, firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "error");
 }
 
 function getSyncErrorHelp(error) {
@@ -759,18 +830,18 @@ function getSyncErrorHelp(error) {
   const lowerMessage = message.toLowerCase();
 
   if (isPermissionError(error)) {
-    return "Realtime Databaseのルールで拒否されています。Firebase Consoleで、ログイン中のユーザーが accounts/{uid} と rankings を読み書きできるルールになっているか確認してください。";
+    return "保存の許可設定で止まっています。ログイン中のアカウントで保存できる設定になっているか確認してください。";
   }
 
   if (code.includes("app-check") || lowerMessage.includes("app check")) {
-    return "App Checkで拒否されています。GitHub PagesのドメインとreCAPTCHAサイトキーがFirebase App Checkに登録され、Realtime Databaseへ適用されているか確認してください。";
+    return "安全確認の設定で止まっています。公開サイトの登録と安全確認の設定を確認してください。";
   }
 
   if (lowerMessage.includes("network") || lowerMessage.includes("failed to fetch")) {
-    return "ネットワーク接続で失敗しています。通信環境を確認してから再チェックしてください。";
+    return "通信がうまくいっていません。通信環境を確認してから、もう一度保存を確認してください。";
   }
 
-  return message ? `同期エラー: ${message}` : "同期エラーが発生しました。Firebaseの設定を確認してください。";
+  return message ? `保存エラー: ${message}` : "保存エラーが発生しました。設定を確認してください。";
 }
 
 function setSyncDebug(title, description, path, type) {
@@ -786,12 +857,12 @@ function setSyncDebug(title, description, path, type) {
 
 async function checkAccountSync() {
   if (!firebaseSync.database) {
-    setSyncDebug("同期の準備ができていません", "ページを再読み込みしてから、もう一度試してください。", "未確認", "error");
+    setSyncDebug("保存の準備ができていません", "ページを再読み込みしてから、もう一度試してください。", "未確認", "error");
     return;
   }
 
   if (!isLoggedInForSync()) {
-    setSyncDebug("ログインなしで利用中", "別端末と同期するには、Googleまたはメールアドレスでログインしてください。", getFirebaseStatePath(firebaseSync.pathRoot), "info");
+    setSyncDebug("ログインなしで利用中", "別端末でも同じデータを使うには、Googleまたはメールアドレスでログインしてください。", getFirebaseStatePath(firebaseSync.pathRoot), "info");
     return;
   }
 
@@ -802,12 +873,12 @@ async function checkAccountSync() {
   }
 
   try {
-    setSyncDebug("同期確認中", "アカウントの保存先へテスト保存しています。", getFirebaseStatePath(firebaseSync.pathRoot), "syncing");
+    setSyncDebug("保存を確認中", "アカウントの保存先へテスト保存しています。", getFirebaseStatePath(firebaseSync.pathRoot), "syncing");
     await firebaseSync.database.ref(getFirebaseStatePath(firebaseSync.pathRoot)).set(createStateSnapshot());
     firebaseSync.lastError = null;
     firebaseSync.lastStatusDetail = "";
-    updateFirebaseStatus("アカウント同期済み", "online");
-    setSyncDebug("同期できています", "テスト保存に成功しました。別端末でも同じアカウントでデータを読み込めます。", getFirebaseStatePath(firebaseSync.pathRoot), "success");
+    updateFirebaseStatus("アカウントに保存済み", "online");
+    setSyncDebug("保存できています", "テスト保存に成功しました。別端末でも同じアカウントでデータを読み込めます。", getFirebaseStatePath(firebaseSync.pathRoot), "success");
   } catch (error) {
     console.warn("同期チェックに失敗しました。", error);
     if (tryLegacyFirebaseStatePath(error)) {
@@ -815,15 +886,15 @@ async function checkAccountSync() {
         await firebaseSync.database.ref(getFirebaseStatePath(firebaseSync.pathRoot)).set(createStateSnapshot());
         firebaseSync.lastError = null;
         firebaseSync.lastStatusDetail = "";
-        updateFirebaseStatus("アカウント同期済み", "online");
-        setSyncDebug("同期できています", "互換保存先でテスト保存に成功しました。", getFirebaseStatePath(firebaseSync.pathRoot), "success");
+        updateFirebaseStatus("アカウントに保存済み", "online");
+        setSyncDebug("保存できています", "テスト保存に成功しました。", getFirebaseStatePath(firebaseSync.pathRoot), "success");
       } catch (legacyError) {
-        rememberSyncError(legacyError, "同期チェック");
-        updateFirebaseStatus(getFirebaseErrorLabel(legacyError, "同期なしで利用中"), "offline");
+        rememberSyncError(legacyError, "保存確認");
+        updateFirebaseStatus(getFirebaseErrorLabel(legacyError, getLocalSaveStatusText()), "offline");
       }
     } else {
-      rememberSyncError(error, "同期チェック");
-      updateFirebaseStatus(getFirebaseErrorLabel(error, "同期なしで利用中"), "offline");
+      rememberSyncError(error, "保存確認");
+      updateFirebaseStatus(getFirebaseErrorLabel(error, getLocalSaveStatusText()), "offline");
     }
   } finally {
     if (elements.syncCheckButton) {
@@ -843,7 +914,7 @@ function isLoggedInForSync() {
 }
 
 function getLocalSaveStatusText() {
-  return isLoggedInForSync() ? "同期なしで利用中" : "この端末に保存中";
+  return "この端末に保存中";
 }
 
 function fillBasicForm() {
@@ -922,10 +993,14 @@ function setSubjectFormMode(isEditing) {
   submitButton.textContent = isEditing ? "変更を保存" : "教科を追加";
   submitButton.classList.toggle("secondary-button", isEditing);
   submitButton.classList.toggle("primary-button", !isEditing);
+  if (elements.subjectCancelButton) {
+    elements.subjectCancelButton.hidden = !isEditing;
+  }
 }
 
 function addEvent(event) {
   event.preventDefault();
+  syncBasicFromForm();
 
   const selectedWeekdays = getSelectedWeekdays();
   const scheduleEvent = {
@@ -948,11 +1023,17 @@ function addEvent(event) {
 
   if (scheduleEvent.isRepeating) {
     if (selectedWeekdays.length === 0) {
-      alert("繰り返す曜日を1つ以上選んでください。");
+      alert("繰り返し予定にする場合は、曜日を1つ以上選んでください。");
       return;
     }
     if (!state.basic.startDate || !state.basic.testDate) {
       alert("繰り返し予定を使うには、先に計画開始日とテスト開始日を入力してください。");
+      return;
+    }
+    const repeatStart = parseDate(state.basic.startDate);
+    const repeatEnd = scheduleEvent.repeatEndDate ? parseDate(scheduleEvent.repeatEndDate) : null;
+    if (repeatEnd && repeatStart && repeatEnd < repeatStart) {
+      alert("繰り返し終了日は、計画開始日より後の日付にしてください。");
       return;
     }
   } else if (!scheduleEvent.date) {
@@ -1046,6 +1127,9 @@ function setEventFormMode(isEditing) {
   const submitButton = elements.eventForm.querySelector('button[type="submit"]');
   if (!submitButton) return;
   submitButton.textContent = isEditing ? "変更を保存" : "予定を追加";
+  if (elements.eventCancelButton) {
+    elements.eventCancelButton.hidden = !isEditing;
+  }
 }
 
 function sortEvents() {
@@ -1101,7 +1185,7 @@ function generatePlan() {
   if (!validateBeforeGenerate()) return;
 
   if (state.plan.length > 0) {
-    const ok = confirm("今の計画を作り直しますか？完了状態や未完了リストがリセットされる場合があります。");
+    const ok = confirm("現在の計画を作り直します。完了状況が変わる可能性があります。よろしいですか？");
     if (!ok) return;
   }
 
@@ -1369,7 +1453,7 @@ function resetAll() {
 
   if (firebaseSync.enabled && firebaseSync.stateRef) {
     firebaseSync.stateRef.remove()
-      .then(() => updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期済み" : "この端末に保存中", "online"))
+      .then(() => updateFirebaseStatus(isLoggedInForSync() ? "アカウントに保存済み" : "この端末に保存中", "online"))
       .catch((error) => {
         console.warn("Firebaseデータの削除に失敗しました。", error);
         updateFirebaseStatus(getLocalSaveStatusText(), "offline");
@@ -1405,7 +1489,7 @@ function renderRanking() {
   }
 
   if (rankings.length === 0) {
-    elements.rankingList.innerHTML = '<p class="empty-message">まだ参加者はいません。設定タブで参加すると、ユーザー名と達成数が表示されます。</p>';
+    elements.rankingList.innerHTML = '<p class="empty-message">まだ参加者はいません。設定タブで参加すると、表示名と達成数が表示されます。</p>';
     return;
   }
 
@@ -1435,6 +1519,10 @@ function updateRankingEntry() {
   }
 
   const username = getRankingUsername();
+  if (!username) {
+    removeRankingEntry();
+    return;
+  }
   const entry = {
     username,
     totalCompletedTasks: Math.max(0, Number(state.achievement.totalCompletedTasks) || 0),
@@ -1460,7 +1548,18 @@ function removeRankingEntry() {
 }
 
 function handleRankingOptInChange() {
-  state.profile.rankingOptIn = Boolean(elements.rankingOptIn.checked);
+  const wantsRanking = Boolean(elements.rankingOptIn.checked);
+  if (wantsRanking && !getRankingUsername()) {
+    elements.rankingOptIn.checked = false;
+    state.profile.rankingOptIn = false;
+    saveState();
+    removeRankingEntry();
+    setAuthMessage("ランキングに参加する場合は、表示名を入力してください。設定の「ログイン情報変更・確認」から表示名を登録できます。", "error");
+    renderRanking();
+    return;
+  }
+
+  state.profile.rankingOptIn = wantsRanking;
   saveState();
   if (state.profile.rankingOptIn) {
     updateRankingEntry();
@@ -1471,16 +1570,13 @@ function handleRankingOptInChange() {
 }
 
 function getRankingUsername() {
-  return state.profile.username
-    || getDefaultUsername(accountState.user)
-    || "名無し";
+  return (state.profile.username || getDefaultUsername(accountState.user) || "").trim();
 }
 
 function getDefaultUsername(user) {
   if (!user) return "";
   if (user.displayName) return user.displayName;
-  if (user.email) return user.email.split("@")[0];
-  return "名無し";
+  return "";
 }
 
 function renderDashboardNext() {
@@ -2278,9 +2374,10 @@ async function registerAccount(event) {
   const email = elements.registerEmail.value.trim();
   const password = elements.registerPassword.value;
   const confirm = elements.registerPasswordConfirm.value;
+  const wantsRanking = Boolean(elements.registerRankingOptIn && elements.registerRankingOptIn.checked);
 
-  if (!username) {
-    setAuthMessage("ランキングに表示するユーザー名を入力してください。", "error");
+  if (wantsRanking && !username) {
+    setAuthMessage("ランキングに参加する場合は、表示名を入力してください。", "error");
     return;
   }
 
@@ -2302,15 +2399,22 @@ async function registerAccount(event) {
   try {
     const auth = getFirebaseAuth();
     const credential = await auth.createUserWithEmailAndPassword(email, password);
-    await credential.user.updateProfile({ displayName: username });
+    if (username) {
+      await credential.user.updateProfile({ displayName: username });
+    }
     accountState.user = credential.user;
     state.profile.username = username;
+    state.profile.rankingOptIn = wantsRanking;
     saveState();
-    updateFirebaseStatus("アカウント同期中", "syncing");
+    updateFirebaseStatus("アカウントに保存中", "syncing");
     connectFirebaseStateRef();
-    updateRankingEntry();
+    if (wantsRanking) {
+      updateRankingEntry();
+    } else {
+      removeRankingEntry();
+    }
     elements.registerForm.reset();
-    setAuthMessage("登録しました。これからはアカウントにデータを同期します。", "success");
+    setAuthMessage("登録しました。これからはアカウントにデータを保存します。", "success");
     showTutorial(true);
   } catch (error) {
     console.warn("新規登録に失敗しました。", error);
@@ -2333,10 +2437,10 @@ async function loginAccount(event) {
     const auth = getFirebaseAuth();
     await auth.signInWithEmailAndPassword(email, password);
     accountState.user = auth.currentUser || accountState.user;
-    updateFirebaseStatus("アカウント同期中", "syncing");
+    updateFirebaseStatus("アカウントに保存中", "syncing");
     connectFirebaseStateRef();
     elements.loginForm.reset();
-    setAuthMessage("ログインしました。アカウントのデータと同期します。", "success");
+    setAuthMessage("ログインしました。アカウントのデータを読み込みます。", "success");
   } catch (error) {
     console.warn("ログインに失敗しました。", error);
     setAuthMessage(getAuthErrorMessage(error), "error");
@@ -2353,14 +2457,14 @@ async function loginWithGoogle() {
 
     await auth.signInWithPopup(provider);
     accountState.user = auth.currentUser || accountState.user;
-    updateFirebaseStatus("アカウント同期中", "syncing");
+    updateFirebaseStatus("アカウントに保存中", "syncing");
     connectFirebaseStateRef();
     if (!state.profile.username) {
       state.profile.username = getDefaultUsername(auth.currentUser);
       saveState();
     }
     updateRankingEntry();
-    setAuthMessage("Googleアカウントでログインしました。アカウントのデータと同期します。", "success");
+    setAuthMessage("Googleアカウントでログインしました。アカウントのデータを読み込みます。", "success");
   } catch (error) {
     console.warn("Googleログインに失敗しました。", error);
     setAuthMessage(getAuthErrorMessage(error), "error");
@@ -2392,7 +2496,7 @@ async function updateAccountInfo(event) {
   const nextPassword = elements.accountNewPassword.value;
 
   if (!nextUsername && !nextEmail && !nextPassword) {
-    setAuthMessage("変更したいユーザー名、メールアドレス、パスワードのどれかを入力してください。", "error");
+    setAuthMessage("変更したい表示名、メールアドレス、パスワードのどれかを入力してください。", "error");
     return;
   }
 
@@ -2480,7 +2584,7 @@ function renderAccountSettings() {
     elements.accountStatusBadge.textContent = isLoggedIn ? "ログイン中" : "未ログイン";
   }
   if (elements.accountStatusTitle) {
-    elements.accountStatusTitle.textContent = isLoggedIn ? "アカウント同期で利用中" : "端末内保存で利用中";
+    elements.accountStatusTitle.textContent = isLoggedIn ? "アカウント保存で利用中" : "端末内保存で利用中";
   }
   if (elements.accountStatusDescription) {
     elements.accountStatusDescription.textContent = isLoggedIn
@@ -2507,19 +2611,19 @@ function renderAccountSettings() {
   }
 
   if (!isLoggedIn) {
-    setSyncDebug("ログインなしで利用中", "この端末には保存されています。別端末と同期するにはログインしてください。", getFirebaseStatePath(firebaseSync.pathRoot), "info");
+    setSyncDebug("ログインなしで利用中", "この端末には保存されています。別端末でも同じデータを使うにはログインしてください。", getFirebaseStatePath(firebaseSync.pathRoot), "info");
     return;
   }
 
   if (firebaseSync.lastError) {
-    setSyncDebug("同期できていません", firebaseSync.lastStatusDetail || getSyncErrorHelp(firebaseSync.lastError), firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "error");
+    setSyncDebug("保存を確認できません", firebaseSync.lastStatusDetail || getSyncErrorHelp(firebaseSync.lastError), firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "error");
     return;
   }
 
-  if (elements.firebaseStatus && elements.firebaseStatus.textContent.includes("同期済み")) {
-    setSyncDebug("同期できています", "アカウントの保存先へ接続できています。", firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "success");
+  if (elements.firebaseStatus && elements.firebaseStatus.textContent.includes("保存済み")) {
+    setSyncDebug("保存できています", "アカウントの保存先へ接続できています。", firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "success");
   } else {
-    setSyncDebug("同期確認中", "まだ同期結果を確認中です。しばらく待つか、再チェックを押してください。", firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "syncing");
+    setSyncDebug("保存を確認中", "まだ保存結果を確認中です。しばらく待つか、「保存を確認」を押してください。", firebaseSync.currentPath || getFirebaseStatePath(firebaseSync.pathRoot), "syncing");
   }
 }
 

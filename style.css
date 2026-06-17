@@ -638,6 +638,33 @@ select:focus {
   border-color: var(--blue-600);
 }
 
+.field-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.inline-check {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: #f8fbff;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  font-weight: 800;
+}
+
+.inline-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--blue-600);
+}
+
 .add-button {
   grid-column: span 1;
 }
@@ -1447,21 +1474,20 @@ select:focus {
   position: fixed;
   inset: 0;
   z-index: 100;
-  display: grid;
-  place-items: center;
   padding: 18px;
+  pointer-events: none;
 }
 
 .tutorial-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.52);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.22);
+  pointer-events: auto;
 }
 
 .tutorial-modal {
-  position: relative;
-  z-index: 101;
+  position: fixed;
+  z-index: 110;
   width: min(520px, 100%);
   max-height: min(78vh, 620px);
   overflow-y: auto;
@@ -1470,6 +1496,7 @@ select:focus {
   border: 1px solid #dbeafe;
   border-radius: 12px;
   box-shadow: var(--shadow-strong);
+  pointer-events: auto;
 }
 
 .tutorial-progress {
@@ -1521,9 +1548,11 @@ select:focus {
 
 .tutorial-highlight {
   position: relative;
-  z-index: 61;
-  outline: 3px solid rgba(37, 99, 235, 0.45);
-  box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.12), var(--shadow-strong);
+  z-index: 125;
+  outline: 3px solid rgba(37, 99, 235, 0.82);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 10px rgba(37, 99, 235, 0.14), 0 14px 42px rgba(37, 99, 235, 0.22), var(--shadow-strong);
+  isolation: isolate;
 }
 
 @media (max-width: 900px) {
@@ -1653,7 +1682,7 @@ select:focus {
 
   .dashboard-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 

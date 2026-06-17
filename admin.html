@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>テスナビ 管理画面</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body class="admin-page">
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-block">
+        <img class="brand-logo" src="assets/logo-header.png" alt="テスナビ">
+        <h1 class="visually-hidden">テスナビ 管理画面</h1>
+      </div>
+      <div class="header-actions admin-header-actions">
+        <a class="button secondary-button" href="index.html">アプリへ戻る</a>
+        <button id="adminLogoutButton" class="button secondary-button" type="button" hidden>ログアウト</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="admin-shell">
+    <section class="admin-hero panel">
+      <p class="eyebrow">Admin Dashboard</p>
+      <h2>管理画面</h2>
+      <p class="section-description">テスナビの利用状況を確認できます。管理者権限があるアカウントでログインしてください。</p>
+      <p id="adminStatus" class="admin-status">ログイン状態を確認しています。</p>
+    </section>
+
+    <section id="adminLoginPanel" class="panel admin-login-panel" hidden>
+      <div class="section-title">
+        <div>
+          <h2>管理者ログイン</h2>
+          <p class="section-description">登録済みのアカウントでログインします。</p>
+        </div>
+      </div>
+      <form id="adminLoginForm" class="settings-form admin-login-form">
+        <label>
+          <span>メールアドレス</span>
+          <input id="adminEmail" type="email" autocomplete="email" placeholder="メールアドレス">
+        </label>
+        <label>
+          <span>パスワード</span>
+          <input id="adminPassword" type="password" autocomplete="current-password" placeholder="パスワード">
+        </label>
+        <div class="admin-login-actions">
+          <button class="button primary-button" type="submit">ログイン</button>
+          <button id="adminGoogleButton" class="button google-button" type="button">Googleでログイン</button>
+        </div>
+      </form>
+      <p id="adminLoginMessage" class="settings-message" aria-live="polite"></p>
+    </section>
+
+    <section id="adminDeniedPanel" class="panel admin-denied-panel" hidden>
+      <h2>管理者権限がありません</h2>
+      <p class="section-description">このアカウントでは管理画面を表示できません。必要な場合は、管理者にロール設定を依頼してください。</p>
+    </section>
+
+    <div id="adminDashboard" hidden>
+      <section class="admin-metric-grid" aria-label="集計">
+        <article class="status-card">
+          <span class="status-label">登録ユーザー数</span>
+          <strong id="metricUsers">--</strong>
+        </article>
+        <article class="status-card">
+          <span class="status-label">ランキング参加者</span>
+          <strong id="metricRankings">--</strong>
+        </article>
+        <article class="status-card">
+          <span class="status-label">今日の学習完了</span>
+          <strong id="metricTodayDone">--</strong>
+        </article>
+        <article class="status-card">
+          <span class="status-label">作成された予定</span>
+          <strong id="metricEvents">--</strong>
+        </article>
+        <article class="status-card admin-wide-metric">
+          <span class="status-label">最近の更新</span>
+          <strong id="metricUpdatedAt">--</strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <div>
+            <h2>ランキング参加者</h2>
+            <p class="section-description">参加をオンにしているユーザーだけを表示します。</p>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>表示名</th>
+                <th>達成数</th>
+                <th>連続クリア</th>
+                <th>最終更新</th>
+              </tr>
+            </thead>
+            <tbody id="adminRankingRows">
+              <tr><td colspan="4">読み込み中です。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel admin-grid-two">
+        <div>
+          <div class="section-title">
+            <h2>問い合わせ</h2>
+          </div>
+          <div id="adminInquiryList" class="admin-list">
+            <p class="empty-message">まだ問い合わせはありません。</p>
+          </div>
+        </div>
+        <div>
+          <div class="section-title">
+            <h2>エラー・保存失敗</h2>
+          </div>
+          <div id="adminErrorList" class="admin-list">
+            <p class="empty-message">記録されたエラーはありません。</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check-compat.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

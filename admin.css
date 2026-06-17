@@ -1,0 +1,141 @@
+.admin-page {
+  padding-bottom: 28px;
+}
+
+.admin-shell {
+  width: min(1080px, calc(100% - 32px));
+  margin: 20px auto 48px;
+  display: grid;
+  gap: 18px;
+}
+
+.admin-hero {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-status {
+  width: fit-content;
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--blue-700);
+  background: var(--blue-50);
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.admin-status.error {
+  color: var(--red-600);
+  background: var(--red-50);
+  border-color: #fecaca;
+}
+
+.admin-status.success {
+  color: var(--green-600);
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+}
+
+.admin-login-panel {
+  max-width: 680px;
+}
+
+.admin-login-form {
+  margin-top: 12px;
+}
+
+.admin-login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-login-actions .button {
+  min-height: 48px;
+}
+
+.admin-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.admin-wide-metric {
+  grid-column: span 4;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 12px 10px;
+  text-align: left;
+  border-bottom: 1px solid #e7eef9;
+  vertical-align: top;
+}
+
+.admin-table th {
+  color: var(--blue-700);
+  background: var(--blue-50);
+  font-weight: 900;
+}
+
+.admin-grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.admin-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-list-item {
+  padding: 12px;
+  background: #f8fbff;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+}
+
+.admin-list-item strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.admin-list-item p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .admin-shell {
+    width: min(100% - 24px, 1080px);
+    margin-top: 12px;
+  }
+
+  .admin-metric-grid,
+  .admin-grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-wide-metric {
+    grid-column: span 1;
+  }
+
+  .admin-login-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
