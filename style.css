@@ -1333,18 +1333,6 @@ select:focus {
   color: var(--blue-700);
 }
 
-.sync-debug-path {
-  display: block;
-  margin-top: 10px;
-  padding: 8px 10px;
-  overflow-wrap: anywhere;
-  color: #475467;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.78rem;
-}
-
 .account-status-card strong {
   display: block;
   margin-top: 6px;

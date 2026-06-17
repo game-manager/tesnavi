@@ -216,7 +216,6 @@ const elements = {
   syncCheckButton: document.getElementById("syncCheckButton"),
   syncDebugTitle: document.getElementById("syncDebugTitle"),
   syncDebugDescription: document.getElementById("syncDebugDescription"),
-  syncDebugPath: document.getElementById("syncDebugPath"),
   authMessage: document.getElementById("authMessage"),
   accountUpdateForm: document.getElementById("accountUpdateForm"),
   accountNewUsername: document.getElementById("accountNewUsername"),
@@ -773,7 +772,7 @@ function setSyncDebug(title, description, path, type) {
   if (!elements.syncDebugTitle) return;
   elements.syncDebugTitle.textContent = title;
   elements.syncDebugDescription.textContent = description;
-  elements.syncDebugPath.textContent = `詳細: ${path || "未確認"}`;
+  if (path) console.info("Sync detail:", path);
   elements.syncDebugTitle.className = `sync-debug-title ${type || ""}`.trim();
 }
 
