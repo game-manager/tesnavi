@@ -26,8 +26,10 @@ const firebaseSync = {
   database: null,
   enabled: false,
   isApplyingRemote: false,
+  pathRoot: APP_STORAGE_ROOT,
   rankingRef: null,
   rankingHandler: null,
+  rankingRoot: APP_STORAGE_ROOT,
   saveTimer: null,
   stateRef: null,
   valueHandler: null
@@ -308,6 +310,8 @@ function initFirebaseAuth(app) {
   firebaseSync.auth = window.firebase.auth(app);
   firebaseSync.auth.onAuthStateChanged((user) => {
     accountState.user = user || null;
+    firebaseSync.pathRoot = APP_STORAGE_ROOT;
+    firebaseSync.currentPath = "";
     if (user && !state.profile.username) {
       state.profile.username = getDefaultUsername(user);
       saveState();
@@ -321,7 +325,7 @@ function initFirebaseAuth(app) {
 function initRankingListener() {
   if (!firebaseSync.database || firebaseSync.rankingRef) return;
 
-  firebaseSync.rankingRef = firebaseSync.database.ref(`${APP_STORAGE_ROOT}/rankings`);
+  firebaseSync.rankingRef = firebaseSync.database.ref(`${firebaseSync.rankingRoot}/rankings`);
   firebaseSync.rankingHandler = (snapshot) => {
     const value = snapshot.val() || {};
     accountState.rankings = Object.keys(value).map((uid) => ({
@@ -342,6 +346,7 @@ function initRankingListener() {
 
   firebaseSync.rankingRef.on("value", firebaseSync.rankingHandler, (error) => {
     console.warn("ランキングの読み込みに失敗しました。", error);
+    if (tryLegacyRankingPath(error)) return;
     accountState.rankings = [];
     elements.rankingStatus.textContent = "準備中";
     elements.rankingList.innerHTML = '<p class="empty-message">ランキングを表示する準備中です。ログインしてタスクを完了すると記録は保存されます。</p>';
@@ -351,7 +356,7 @@ function initRankingListener() {
 function connectFirebaseStateRef() {
   if (!firebaseSync.database) return;
 
-  const nextPath = getFirebaseStatePath();
+  const nextPath = getFirebaseStatePath(firebaseSync.pathRoot);
   if (firebaseSync.currentPath === nextPath && firebaseSync.stateRef) return;
 
   if (firebaseSync.stateRef && firebaseSync.valueHandler) {
@@ -365,17 +370,52 @@ function connectFirebaseStateRef() {
   updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期中" : "この端末に保存中", "syncing");
   firebaseSync.stateRef.on("value", firebaseSync.valueHandler, (error) => {
     console.warn("Firebaseの読み込みに失敗しました。", error);
+    if (tryLegacyFirebaseStatePath(error)) return;
     updateFirebaseStatus(getFirebaseErrorLabel(error, "同期なしで利用中"), "offline");
   });
 }
 
-function getFirebaseStatePath() {
+function getFirebaseStatePath(root = APP_STORAGE_ROOT) {
   const user = getSyncUser();
   if (user) {
-    return `${APP_STORAGE_ROOT}/accounts/${user.uid}/state`;
+    return `${root}/accounts/${user.uid}/state`;
   }
 
-  return `${APP_STORAGE_ROOT}/users/${getDeviceId()}/state`;
+  return `${root}/users/${getDeviceId()}/state`;
+}
+
+function tryLegacyFirebaseStatePath(error) {
+  if (!shouldTryLegacyPath(error) || firebaseSync.pathRoot !== APP_STORAGE_ROOT) return false;
+
+  firebaseSync.pathRoot = LEGACY_APP_STORAGE_ROOT;
+  firebaseSync.currentPath = "";
+  updateFirebaseStatus(isLoggedInForSync() ? "アカウント同期中" : "保存準備中", "syncing");
+  connectFirebaseStateRef();
+  return true;
+}
+
+function tryLegacyRankingPath(error) {
+  if (!shouldTryLegacyPath(error) || firebaseSync.rankingRoot !== APP_STORAGE_ROOT) return false;
+
+  if (firebaseSync.rankingRef && firebaseSync.rankingHandler) {
+    firebaseSync.rankingRef.off("value", firebaseSync.rankingHandler);
+  }
+
+  firebaseSync.rankingRef = null;
+  firebaseSync.rankingHandler = null;
+  firebaseSync.rankingRoot = LEGACY_APP_STORAGE_ROOT;
+  initRankingListener();
+  return true;
+}
+
+function shouldTryLegacyPath(error) {
+  return isPermissionError(error) && LEGACY_APP_STORAGE_ROOT && LEGACY_APP_STORAGE_ROOT !== APP_STORAGE_ROOT;
+}
+
+function isPermissionError(error) {
+  const code = String(error && error.code ? error.code : "");
+  const message = String(error && error.message ? error.message : "");
+  return code.includes("permission-denied") || message.includes("Permission denied");
 }
 
 function handleRemoteStateSnapshot(snapshot) {
@@ -409,7 +449,7 @@ function getFirebaseErrorLabel(error, fallback) {
   const code = String(error && error.code ? error.code : "");
   const message = String(error && error.message ? error.message : "");
 
-  if (code.includes("permission-denied") || message.includes("Permission denied")) {
+  if (isPermissionError(error)) {
     return isLoggedInForSync() ? "同期なしで利用中" : "この端末に保存中";
   }
 
@@ -999,7 +1039,7 @@ function updateRankingEntry() {
     updatedAt: Date.now()
   };
 
-  firebaseSync.database.ref(`${APP_STORAGE_ROOT}/rankings/${accountState.user.uid}`).set(entry)
+  firebaseSync.database.ref(`${firebaseSync.rankingRoot}/rankings/${accountState.user.uid}`).set(entry)
     .catch((error) => {
       console.warn("ランキングの更新に失敗しました。", error);
       elements.rankingStatus.textContent = "準備中";
@@ -1922,7 +1962,7 @@ async function submitContact(event) {
       throw new Error("Firebase Database is not ready.");
     }
 
-    await firebaseSync.database.ref(`${APP_STORAGE_ROOT}/inquiries/${inquiry.id}`).set(inquiry);
+    await firebaseSync.database.ref(`${firebaseSync.pathRoot}/inquiries/${inquiry.id}`).set(inquiry);
     elements.contactForm.reset();
     setContactMessage("お問い合わせを送信しました。", "success");
   } catch (error) {
