@@ -216,6 +216,8 @@ const elements = {
   accountLoginState: document.getElementById("accountLoginState"),
   accountEmailDisplay: document.getElementById("accountEmailDisplay"),
   accountUsernameDisplay: document.getElementById("accountUsernameDisplay"),
+  accountDetailToggleButton: document.getElementById("accountDetailToggleButton"),
+  accountDetailPanel: document.getElementById("accountDetailPanel"),
   accountUidDisplay: document.getElementById("accountUidDisplay"),
   syncCheckButton: document.getElementById("syncCheckButton"),
   syncDebugTitle: document.getElementById("syncDebugTitle"),
@@ -279,6 +281,9 @@ function bindEvents() {
   elements.loginForm.addEventListener("submit", loginAccount);
   elements.googleLoginButton.addEventListener("click", loginWithGoogle);
   elements.logoutButton.addEventListener("click", logoutAccount);
+  if (elements.accountDetailToggleButton) {
+    elements.accountDetailToggleButton.addEventListener("click", toggleAccountDetails);
+  }
   elements.syncCheckButton.addEventListener("click", checkAccountSync);
   elements.accountUpdateForm.addEventListener("submit", updateAccountInfo);
   elements.contactForm.addEventListener("submit", submitContact);
@@ -2571,6 +2576,17 @@ function getFirebaseAuth() {
   }
 
   return firebaseSync.auth;
+}
+
+function toggleAccountDetails() {
+  if (!elements.accountDetailPanel || !elements.accountDetailToggleButton) {
+    return;
+  }
+
+  const shouldShow = elements.accountDetailPanel.hidden;
+  elements.accountDetailPanel.hidden = !shouldShow;
+  elements.accountDetailToggleButton.textContent = shouldShow ? "詳細情報を隠す" : "詳細情報を表示";
+  elements.accountDetailToggleButton.setAttribute("aria-expanded", String(shouldShow));
 }
 
 function renderAccountSettings() {

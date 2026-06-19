@@ -1433,6 +1433,34 @@ select:focus {
   overflow-wrap: anywhere;
 }
 
+.account-detail-toggle {
+  justify-self: start;
+  min-height: 40px;
+}
+
+.account-detail-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #f8fbff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+}
+
+.account-detail-panel[hidden] {
+  display: none;
+}
+
+.account-detail-panel .account-detail-list div {
+  padding: 0;
+  border-bottom: 0;
+}
+
+.account-detail-panel .settings-hint {
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
 .settings-hint,
 .settings-message {
   margin: 0;
