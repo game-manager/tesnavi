@@ -98,6 +98,22 @@
         </div>
       </section>
 
+      <section class="panel selected-day-panel">
+        <div class="section-title">
+          <div>
+            <h2 id="selectedDayTitle">日付を選んで予定を見る</h2>
+            <p id="selectedDayMeta" class="section-description">カレンダーの日付を押すと、その日の予定を確認できます。</p>
+          </div>
+        </div>
+        <div id="selectedDayDetail" class="selected-day-detail" aria-live="polite">
+          <p class="empty-message">カレンダーから見たい日付を選んでください。</p>
+        </div>
+        <div class="load-adjust-actions" aria-label="予定の重さを調整">
+          <button id="selectedDayHeavyButton" class="button secondary-button" type="button">この日は重すぎる</button>
+          <button id="selectedDayLightButton" class="button secondary-button" type="button">この日は軽すぎる</button>
+        </div>
+      </section>
+
       <section class="actions single-action">
         <button id="redistributeButton" class="button secondary-button main-action" type="button">未完了分を再配分する</button>
       </section>

@@ -969,6 +969,10 @@ select:focus {
   transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
 }
 
+.calendar-cell.selectable {
+  cursor: pointer;
+}
+
 .calendar-cell.has-plan:hover {
   border-color: #bfdbfe;
   box-shadow: 0 10px 24px rgba(29, 78, 216, 0.1);
@@ -994,6 +998,12 @@ select:focus {
   border-color: var(--blue-600);
   box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.12);
   border-top-color: var(--blue-600);
+}
+
+.calendar-cell.selected {
+  border-color: var(--blue-600);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2), 0 12px 28px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
 }
 
 .calendar-cell.done {
@@ -1101,6 +1111,41 @@ select:focus {
 .calendar-action.missed {
   color: #92400e;
   background: var(--yellow-100);
+}
+
+.selected-day-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.selected-day-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.selected-day-detail .plan-card {
+  margin: 0;
+}
+
+.load-adjust-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.load-adjust-actions .button:first-child {
+  color: #92400e;
+  background: var(--yellow-100);
+}
+
+.load-adjust-actions .button:last-child {
+  color: var(--blue-700);
+  background: #e0f2fe;
+}
+
+.load-adjust-actions .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .unfinished-list {
@@ -1718,6 +1763,10 @@ select:focus {
     width: 100%;
     min-width: 0;
     padding: 0 10px;
+  }
+
+  .load-adjust-actions {
+    grid-template-columns: 1fr;
   }
 
   .guide-steps {

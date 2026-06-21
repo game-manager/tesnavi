@@ -81,6 +81,7 @@ let tutorialOpen = false;
 let tutorialStepIndex = 0;
 let currentTutorialTarget = null;
 let tutorialPositionTimer = null;
+let selectedPlanDate = "";
 
 const tutorialSteps = [
   {
@@ -164,6 +165,11 @@ const elements = {
   todayTodoList: document.getElementById("todayTodoList"),
   dayPlanList: document.getElementById("dayPlanList"),
   calendarList: document.getElementById("calendarList"),
+  selectedDayTitle: document.getElementById("selectedDayTitle"),
+  selectedDayMeta: document.getElementById("selectedDayMeta"),
+  selectedDayDetail: document.getElementById("selectedDayDetail"),
+  selectedDayHeavyButton: document.getElementById("selectedDayHeavyButton"),
+  selectedDayLightButton: document.getElementById("selectedDayLightButton"),
   unfinishedList: document.getElementById("unfinishedList"),
   generateButton: document.getElementById("generateButton"),
   redistributeButton: document.getElementById("redistributeButton"),
@@ -269,6 +275,8 @@ function bindEvents() {
   elements.eventForm.addEventListener("submit", addEvent);
   elements.generateButton.addEventListener("click", generatePlan);
   elements.redistributeButton.addEventListener("click", redistributeUnfinished);
+  elements.selectedDayHeavyButton.addEventListener("click", () => adjustSelectedDayLoad("heavy"));
+  elements.selectedDayLightButton.addEventListener("click", () => adjustSelectedDayLoad("light"));
   elements.resetButton.addEventListener("click", resetAll);
   elements.resetButtonSettings.addEventListener("click", resetAll);
   elements.goInputButton.addEventListener("click", () => setActiveTab("input"));
@@ -1219,6 +1227,7 @@ function generatePlan() {
 
   state.plan = basePlan;
   state.unfinished = [];
+  selectedPlanDate = pickDefaultSelectedPlanDate(startOfToday());
   saveState();
   renderAll();
   setActiveTab("schedule");
@@ -1427,6 +1436,102 @@ function redistributeUnfinished() {
   renderAll();
 }
 
+function adjustSelectedDayLoad(mode) {
+  if (!selectedPlanDate) {
+    alert("先にカレンダーから調整したい日を選んでください。");
+    return;
+  }
+
+  const selectedDay = state.plan.find((day) => day.date === selectedPlanDate);
+  if (!selectedDay) {
+    alert("この日は勉強計画がないため、重さを調整できません。");
+    return;
+  }
+
+  if (selectedDay.status === "done") {
+    alert("完了済みの日は変更しません。別の日を選んでください。");
+    return;
+  }
+
+  const adjusted = mode === "heavy"
+    ? moveTaskAwayFromSelectedDay(selectedDay)
+    : moveTaskIntoSelectedDay(selectedDay);
+
+  if (!adjusted) return;
+
+  saveState();
+  renderAll();
+}
+
+function moveTaskAwayFromSelectedDay(selectedDay) {
+  if (!selectedDay.items || selectedDay.items.length === 0) {
+    alert("移動できる勉強内容がありません。");
+    return false;
+  }
+
+  const targets = getAdjustablePlanDays(selectedDay.date);
+  if (targets.length === 0) {
+    alert("他の日に移動できる空きが見つかりませんでした。完了済みではない今日以降の日が必要です。");
+    return false;
+  }
+
+  const taskMinutes = estimateTaskMinutes(selectedDay);
+  const [task] = selectedDay.items.splice(selectedDay.items.length - 1, 1);
+  const target = targets.sort(comparePlanLoad)[0];
+  target.items.push({
+    ...task,
+    text: task.text.includes("調整分") ? task.text : `${task.text}（調整分）`
+  });
+  selectedDay.plannedMinutes = Math.max(15, selectedDay.plannedMinutes - taskMinutes);
+  target.plannedMinutes += taskMinutes;
+  alert(`${formatDateShort(parseDate(selectedDay.date))}の予定を少し軽くして、${formatDateShort(parseDate(target.date))}へ移しました。`);
+  return true;
+}
+
+function moveTaskIntoSelectedDay(selectedDay) {
+  const donors = getAdjustablePlanDays(selectedDay.date)
+    .filter((day) => Array.isArray(day.items) && day.items.length > 1)
+    .sort((a, b) => comparePlanLoad(b, a));
+
+  if (donors.length === 0) {
+    alert("他の日から移せる勉強内容が見つかりませんでした。");
+    return false;
+  }
+
+  const donor = donors[0];
+  const taskMinutes = estimateTaskMinutes(donor);
+  const [task] = donor.items.splice(donor.items.length - 1, 1);
+  selectedDay.items.push({
+    ...task,
+    text: task.text.includes("調整分") ? task.text : `${task.text}（調整分）`
+  });
+  donor.plannedMinutes = Math.max(15, donor.plannedMinutes - taskMinutes);
+  selectedDay.plannedMinutes += taskMinutes;
+  alert(`${formatDateShort(parseDate(donor.date))}から予定を1つ移して、この日を少し増やしました。`);
+  return true;
+}
+
+function getAdjustablePlanDays(excludedDate) {
+  const todayKey = toISODate(startOfToday());
+  return state.plan.filter((day) => {
+    return day.date !== excludedDate
+      && day.date >= todayKey
+      && day.status !== "done";
+  });
+}
+
+function comparePlanLoad(a, b) {
+  const aItems = Array.isArray(a.items) ? a.items.length : 0;
+  const bItems = Array.isArray(b.items) ? b.items.length : 0;
+  if (aItems !== bItems) return aItems - bItems;
+  return a.plannedMinutes - b.plannedMinutes;
+}
+
+function estimateTaskMinutes(day) {
+  const taskCount = Math.max(1, Array.isArray(day.items) ? day.items.length : 1);
+  return Math.max(10, Math.round(day.plannedMinutes / taskCount));
+}
+
 function resetAll() {
   const ok = confirm("すべての入力内容と計画を削除します。よろしいですか？");
   if (!ok) return;
@@ -1449,6 +1554,7 @@ function resetAll() {
   state.aiMessages = [];
   state.scannedAssignments = [];
   state.achievement = normalizeAchievement();
+  selectedPlanDate = "";
   editingSubjectId = null;
   elements.basicForm.reset();
   resetSubjectForm();
@@ -1999,6 +2105,8 @@ function renderPlan() {
   elements.calendarTitle.textContent = "";
 
   if (state.plan.length === 0 && state.events.length === 0) {
+    selectedPlanDate = "";
+    renderSelectedDayDetail(startOfToday());
     elements.todayTodoList.innerHTML = '<p class="empty-message">入力（+）タブで基本情報と教科を入力して、計画を作成してください。</p>';
     elements.dayPlanList.innerHTML = '<p class="empty-message">計画を作成すると、今日以降の予定が見やすく並びます。</p>';
     elements.calendarList.innerHTML = '<p class="empty-message">計画を作成すると、ここにカレンダー形式で表示されます。</p>';
@@ -2008,7 +2116,9 @@ function renderPlan() {
   const today = startOfToday();
   renderTodayTodo(today);
   renderDayPlanList(today);
+  ensureSelectedPlanDate(today);
   renderCalendarSchedule(today);
+  renderSelectedDayDetail(today);
 }
 
 function renderTodayTodo(today) {
@@ -2074,6 +2184,72 @@ function renderCalendarSchedule(today) {
     monthSection.append(monthHeading, scrollArea);
     elements.calendarList.appendChild(monthSection);
   });
+}
+
+function ensureSelectedPlanDate(today) {
+  const dateKeys = getSelectablePlanDates();
+  if (selectedPlanDate && dateKeys.includes(selectedPlanDate)) {
+    return;
+  }
+
+  selectedPlanDate = pickDefaultSelectedPlanDate(today);
+}
+
+function getSelectablePlanDates() {
+  return Array.from(new Set([
+    ...state.plan.map((day) => day.date),
+    ...getExpandedEventDates()
+  ].filter(Boolean))).sort();
+}
+
+function pickDefaultSelectedPlanDate(today) {
+  const dateKeys = getSelectablePlanDates();
+  const todayKey = toISODate(today);
+  return dateKeys.includes(todayKey) ? todayKey : (dateKeys[0] || "");
+}
+
+function selectCalendarDate(dateKey) {
+  selectedPlanDate = dateKey;
+  renderAll();
+}
+
+function renderSelectedDayDetail(today) {
+  if (!elements.selectedDayDetail) return;
+
+  elements.selectedDayDetail.innerHTML = "";
+  const selectedDate = selectedPlanDate ? parseDate(selectedPlanDate) : null;
+  const selectedDay = state.plan.find((day) => day.date === selectedPlanDate);
+  const selectedEvents = selectedPlanDate ? getEventsForDate(selectedPlanDate) : [];
+  const canAdjust = Boolean(selectedDay) && selectedDay.status !== "done";
+
+  elements.selectedDayHeavyButton.disabled = !canAdjust || selectedDay.items.length === 0;
+  elements.selectedDayLightButton.disabled = !canAdjust;
+
+  if (!selectedDate) {
+    elements.selectedDayTitle.textContent = "日付を選んで予定を見る";
+    elements.selectedDayMeta.textContent = "カレンダーの日付を押すと、その日の予定を確認できます。";
+    elements.selectedDayDetail.innerHTML = '<p class="empty-message">カレンダーから見たい日付を選んでください。</p>';
+    return;
+  }
+
+  elements.selectedDayTitle.textContent = `${formatDateShort(selectedDate)} ${getWeekday(selectedDate)}の予定`;
+  elements.selectedDayMeta.textContent = selectedDay
+    ? `勉強予定 ${selectedDay.plannedMinutes}分 / ${selectedDay.items.length || 0}件`
+    : selectedEvents.length > 0
+      ? `予定 ${selectedEvents.length}件`
+      : "この日の予定はまだありません。";
+
+  if (selectedDay) {
+    elements.selectedDayDetail.appendChild(createPlanCard(selectedDay, today, false));
+    return;
+  }
+
+  if (selectedEvents.length > 0) {
+    elements.selectedDayDetail.innerHTML = createEventOnlyCardHTML(selectedDate, selectedEvents);
+    return;
+  }
+
+  elements.selectedDayDetail.innerHTML = '<p class="empty-message">この日の予定はまだありません。</p>';
 }
 
 function createPlanCard(day, today, compact) {
@@ -2150,15 +2326,33 @@ function createCalendarCells(monthDate, planByDate, today) {
       dayEvents.length > 0 ? "has-event" : "",
       day && day.status === "done" ? "done" : "",
       day && day.status === "missed" ? "missed" : "",
-      isSameDate(date, today) ? "today" : ""
+      isSameDate(date, today) ? "today" : "",
+      selectedPlanDate === isoDate ? "selected" : "",
+      "selectable"
     ].filter(Boolean).join(" ");
 
     cell.innerHTML = createCalendarCellHTML(date, day, dayEvents);
+    cell.tabIndex = 0;
+    cell.setAttribute("role", "button");
+    cell.setAttribute("aria-label", `${formatDateShort(date)}の予定を見る`);
+    cell.addEventListener("click", () => selectCalendarDate(isoDate));
+    cell.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectCalendarDate(isoDate);
+      }
+    });
 
     if (day) {
       const [completeButton, missedButton] = cell.querySelectorAll("button");
-      completeButton.addEventListener("click", () => markComplete(day.id));
-      missedButton.addEventListener("click", () => markUnfinished(day.id));
+      completeButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        markComplete(day.id);
+      });
+      missedButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        markUnfinished(day.id);
+      });
     }
 
     cells.push(cell);
