@@ -1343,8 +1343,10 @@ function addReviewTasks(plan, dayBeforeTest, twoDaysBeforeTest) {
 function markComplete(planId) {
   const target = state.plan.find((day) => day.id === planId);
   if (!target) return;
+  if (target.status === "done") return;
 
   const wasDone = target.status === "done";
+  target.lastStatusChange = createStatusUndoSnapshot(target.status, "done");
   target.status = "done";
   state.unfinished = state.unfinished.filter((item) => item.planId !== planId);
   if (!wasDone) {
@@ -1358,7 +1360,9 @@ function markComplete(planId) {
 function markUnfinished(planId) {
   const target = state.plan.find((day) => day.id === planId);
   if (!target || target.status === "done") return;
+  if (target.status === "missed") return;
 
+  target.lastStatusChange = createStatusUndoSnapshot(target.status, "missed");
   const exists = state.unfinished.some((item) => item.planId === planId);
   if (!exists) {
     state.unfinished.push({
@@ -1372,6 +1376,37 @@ function markUnfinished(planId) {
 
   target.status = "missed";
   state.achievement.currentTaskStreak = 0;
+  saveState();
+  updateRankingEntry();
+  renderAll();
+}
+
+function createStatusUndoSnapshot(previousStatus, changedTo) {
+  return {
+    previousStatus: previousStatus || "pending",
+    changedTo,
+    achievement: { ...state.achievement },
+    changedAt: Date.now()
+  };
+}
+
+function undoPlanStatus(planId) {
+  const target = state.plan.find((day) => day.id === planId);
+  if (!target) return;
+
+  const snapshot = target.lastStatusChange;
+  target.status = snapshot && snapshot.previousStatus ? snapshot.previousStatus : "pending";
+  state.unfinished = state.unfinished.filter((item) => item.planId !== planId);
+
+  if (snapshot && snapshot.achievement) {
+    state.achievement = normalizeAchievement(snapshot.achievement);
+  } else if (target.status !== "done") {
+    const taskCount = countTasksForPlanDay(target);
+    state.achievement.totalCompletedTasks = Math.max(0, state.achievement.totalCompletedTasks - taskCount);
+    state.achievement.currentTaskStreak = Math.max(0, state.achievement.currentTaskStreak - taskCount);
+  }
+
+  delete target.lastStatusChange;
   saveState();
   updateRankingEntry();
   renderAll();
@@ -2279,14 +2314,18 @@ function createPlanCard(day, today, compact) {
     ${eventBlock}
     <ul class="study-items">${items}</ul>
     <div class="plan-actions">
-      <button class="button complete-button small-button" type="button">完了</button>
-      <button class="button missed-button small-button" type="button">できなかった</button>
+      <button class="button complete-button small-button" type="button" data-action="complete">完了</button>
+      <button class="button missed-button small-button" type="button" data-action="missed">できなかった</button>
+      ${day.status !== "pending" ? '<button class="button undo-button small-button" type="button" data-action="undo">取り消す</button>' : ""}
     </div>
   `;
 
-  const [completeButton, missedButton] = card.querySelectorAll("button");
-  completeButton.addEventListener("click", () => markComplete(day.id));
-  missedButton.addEventListener("click", () => markUnfinished(day.id));
+  card.querySelector('[data-action="complete"]').addEventListener("click", () => markComplete(day.id));
+  card.querySelector('[data-action="missed"]').addEventListener("click", () => markUnfinished(day.id));
+  const undoButton = card.querySelector('[data-action="undo"]');
+  if (undoButton) {
+    undoButton.addEventListener("click", () => undoPlanStatus(day.id));
+  }
   return card;
 }
 
@@ -2344,7 +2383,9 @@ function createCalendarCells(monthDate, planByDate, today) {
     });
 
     if (day) {
-      const [completeButton, missedButton] = cell.querySelectorAll("button");
+      const completeButton = cell.querySelector('[data-action="complete"]');
+      const missedButton = cell.querySelector('[data-action="missed"]');
+      const undoButton = cell.querySelector('[data-action="undo"]');
       completeButton.addEventListener("click", (event) => {
         event.stopPropagation();
         markComplete(day.id);
@@ -2353,6 +2394,12 @@ function createCalendarCells(monthDate, planByDate, today) {
         event.stopPropagation();
         markUnfinished(day.id);
       });
+      if (undoButton) {
+        undoButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          undoPlanStatus(day.id);
+        });
+      }
     }
 
     cells.push(cell);
@@ -2391,8 +2438,9 @@ function createCalendarCellHTML(date, day, dayEvents) {
     ${eventBlock}
     <ul class="calendar-items">${previewItems}${remaining}</ul>
     <div class="calendar-actions">
-      <button class="calendar-action complete" type="button" aria-label="${formatDateShort(date)}を完了">完了</button>
-      <button class="calendar-action missed" type="button" aria-label="${formatDateShort(date)}を未完了にする">未</button>
+      <button class="calendar-action complete" type="button" data-action="complete" aria-label="${formatDateShort(date)}を完了">完了</button>
+      <button class="calendar-action missed" type="button" data-action="missed" aria-label="${formatDateShort(date)}を未完了にする">未</button>
+      ${day.status !== "pending" ? `<button class="calendar-action undo" type="button" data-action="undo" aria-label="${formatDateShort(date)}の記録を取り消す">戻す</button>` : ""}
     </div>
   `;
 }
