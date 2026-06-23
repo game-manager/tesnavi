@@ -1282,7 +1282,8 @@ function createSubjectTasks(subject, slotCount) {
 
     tasks.push({
       subjectName: subject.name,
-      text: `${subject.name}：${formatTaskText(subject, from, to, pageInfo)}`
+      text: `${subject.name}：${formatTaskText(subject, from, to, pageInfo)}`,
+      completed: false
     });
   }
 
@@ -1328,13 +1329,13 @@ function addReviewTasks(plan, dayBeforeTest, twoDaysBeforeTest) {
     const date = parseDate(day.date);
     if (isSameDate(date, twoDaysBeforeTest) && !isSameDate(twoDaysBeforeTest, dayBeforeTest)) {
       day.items = [
-        { subjectName: "復習", text: `復習中心：${names}の間違えた問題・暗記・不安な範囲を確認` }
+        { subjectName: "復習", text: `復習中心：${names}の間違えた問題・暗記・不安な範囲を確認`, completed: false }
       ];
     }
 
     if (isSameDate(date, dayBeforeTest)) {
       day.items = [
-        { subjectName: "最終確認", text: "全教科の最終確認・暗記・間違えた問題の復習" }
+        { subjectName: "最終確認", text: "全教科の最終確認・暗記・間違えた問題の復習", completed: false }
       ];
     }
   });
@@ -1346,7 +1347,8 @@ function markComplete(planId) {
   if (target.status === "done") return;
 
   const wasDone = target.status === "done";
-  target.lastStatusChange = createStatusUndoSnapshot(target.status, "done");
+  target.lastStatusChange = createStatusUndoSnapshot(target, "done");
+  setPlanItemsCompleted(target, true);
   target.status = "done";
   state.unfinished = state.unfinished.filter((item) => item.planId !== planId);
   if (!wasDone) {
@@ -1362,7 +1364,14 @@ function markUnfinished(planId) {
   if (!target || target.status === "done") return;
   if (target.status === "missed") return;
 
-  target.lastStatusChange = createStatusUndoSnapshot(target.status, "missed");
+  const incompleteItems = getIncompletePlanItems(target);
+  if (incompleteItems.length === 0) {
+    markComplete(planId);
+    return;
+  }
+
+  target.lastStatusChange = createStatusUndoSnapshot(target, "missed");
+  const completedCount = countCompletedPlanItems(target);
   const exists = state.unfinished.some((item) => item.planId === planId);
   if (!exists) {
     state.unfinished.push({
@@ -1370,21 +1379,25 @@ function markUnfinished(planId) {
       planId,
       date: target.date,
       plannedMinutes: target.plannedMinutes,
-      items: target.items.map((item) => item.text)
+      items: incompleteItems.map((item) => item.text)
     });
   }
 
   target.status = "missed";
+  if (completedCount > 0) {
+    recordCompletedTasks(completedCount);
+  }
   state.achievement.currentTaskStreak = 0;
   saveState();
   updateRankingEntry();
   renderAll();
 }
 
-function createStatusUndoSnapshot(previousStatus, changedTo) {
+function createStatusUndoSnapshot(day, changedTo) {
   return {
-    previousStatus: previousStatus || "pending",
+    previousStatus: day.status || "pending",
     changedTo,
+    itemCompleted: Array.isArray(day.items) ? day.items.map((item) => Boolean(item.completed)) : [],
     achievement: { ...state.achievement },
     changedAt: Date.now()
   };
@@ -1397,6 +1410,11 @@ function undoPlanStatus(planId) {
   const snapshot = target.lastStatusChange;
   target.status = snapshot && snapshot.previousStatus ? snapshot.previousStatus : "pending";
   state.unfinished = state.unfinished.filter((item) => item.planId !== planId);
+  if (snapshot && Array.isArray(snapshot.itemCompleted)) {
+    target.items.forEach((item, index) => {
+      item.completed = Boolean(snapshot.itemCompleted[index]);
+    });
+  }
 
   if (snapshot && snapshot.achievement) {
     state.achievement = normalizeAchievement(snapshot.achievement);
@@ -1424,6 +1442,33 @@ function recordCompletedTasks(taskCount) {
 
 function countTasksForPlanDay(day) {
   return Array.isArray(day.items) && day.items.length > 0 ? day.items.length : 1;
+}
+
+function getIncompletePlanItems(day) {
+  if (!Array.isArray(day.items)) return [];
+  return day.items.filter((item) => !item.completed);
+}
+
+function countCompletedPlanItems(day) {
+  if (!Array.isArray(day.items)) return 0;
+  return day.items.filter((item) => item.completed).length;
+}
+
+function setPlanItemsCompleted(day, completed) {
+  if (!Array.isArray(day.items)) return;
+  day.items.forEach((item) => {
+    item.completed = completed;
+  });
+}
+
+function togglePlanItemCompleted(planId, itemIndex, completed) {
+  const target = state.plan.find((day) => day.id === planId);
+  if (!target || target.status !== "pending" || !target.items[itemIndex]) return;
+
+  target.items[itemIndex].completed = completed;
+  state.unfinished = state.unfinished.filter((item) => item.planId !== planId);
+  saveState();
+  renderAll();
 }
 
 function redistributeUnfinished() {
@@ -1454,7 +1499,8 @@ function redistributeUnfinished() {
   const tasks = state.unfinished.flatMap((entry) => {
     return entry.items.map((text) => ({
       subjectName: "再配分",
-      text: `再配分：${text}`
+      text: `再配分：${text}`,
+      completed: false
     }));
   });
 
@@ -2299,7 +2345,19 @@ function createPlanCard(day, today, compact) {
   ].filter(Boolean).join(" ");
 
   const items = day.items.length > 0
-    ? day.items.map((item) => `<li>${escapeHTML(item.text)}</li>`).join("")
+    ? day.items.map((item, index) => `
+      <li class="study-item ${item.completed ? "checked" : ""}">
+        <label class="study-check-row">
+          <input
+            type="checkbox"
+            data-item-index="${index}"
+            ${item.completed ? "checked" : ""}
+            ${day.status !== "pending" ? "disabled" : ""}
+          >
+          <span>${escapeHTML(item.text)}</span>
+        </label>
+      </li>
+    `).join("")
     : "<li>暗記・ノート整理・前回の続き</li>";
   const eventBlock = createPlanEventsHTML(dayEvents);
 
@@ -2322,6 +2380,11 @@ function createPlanCard(day, today, compact) {
 
   card.querySelector('[data-action="complete"]').addEventListener("click", () => markComplete(day.id));
   card.querySelector('[data-action="missed"]').addEventListener("click", () => markUnfinished(day.id));
+  card.querySelectorAll("[data-item-index]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      togglePlanItemCompleted(day.id, Number(checkbox.dataset.itemIndex), checkbox.checked);
+    });
+  });
   const undoButton = card.querySelector('[data-action="undo"]');
   if (undoButton) {
     undoButton.addEventListener("click", () => undoPlanStatus(day.id));
@@ -2424,7 +2487,8 @@ function createCalendarCellHTML(date, day, dayEvents) {
   }
 
   const previewItems = day.items.slice(0, 2).map((item) => {
-    return `<li>${escapeHTML(shortenText(item.text, 34))}</li>`;
+    const prefix = item.completed ? "✓ " : "";
+    return `<li class="${item.completed ? "checked" : ""}">${prefix}${escapeHTML(shortenText(item.text, 34))}</li>`;
   }).join("");
   const remaining = day.items.length > 2 ? `<li>ほか${day.items.length - 2}件</li>` : "";
   const statusLabel = day.status === "done" ? "完了" : day.status === "missed" ? "未完了" : "";

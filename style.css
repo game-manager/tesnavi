@@ -865,11 +865,49 @@ select:focus {
 
 .study-items {
   margin: 14px 0 0;
-  padding-left: 20px;
+  padding-left: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
 }
 
-.study-items li + li {
-  margin-top: 6px;
+.study-item {
+  margin: 0;
+}
+
+.study-check-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 10px;
+  background: #f8fbff;
+  border: 1px solid #e1eaf8;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.study-check-row input {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  accent-color: var(--green-600);
+}
+
+.study-check-row span {
+  overflow-wrap: anywhere;
+}
+
+.study-item.checked .study-check-row {
+  color: var(--muted);
+  background: #f3f7f5;
+  border-color: #d7eadf;
+}
+
+.study-item.checked .study-check-row span,
+.calendar-items li.checked {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
 }
 
 .plan-events {
